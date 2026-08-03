@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "deeplrn"
+version = "0.1.0"
+description = "Document-level NLP pipeline for extracting financial violation details from Philippine COA audit reports."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "DEEPLRN Team"},
+]
+
+dependencies = [
+    "pdfplumber>=0.10.0",
+    "pytesseract>=0.3.10",
+    "Pillow>=10.0.0",
+    "transformers>=4.35.0",
+    "torch>=2.0.0",
+    "tqdm>=4.65.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+deeplrn-preprocess = "deeplrn.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["deeplrn*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"

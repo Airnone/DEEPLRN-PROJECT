@@ -1,0 +1,196 @@
+{
+  "document": {
+    "filename": "DEEPLRN_project.pdf",
+    "total_pages": 3,
+    "total_chunks": 13,
+    "ocr_pages": 0,
+    "extraction_time_s": 23.16,
+    "total_time_s": 32.13
+  },
+  "pages": [
+    {
+      "page_number": 1,
+      "text_length": 4892,
+      "text_preview": "Deep Text Mining of COA Annual Audit Reports for Systemic\nFinancial Misappropriation\nMatthewCorral,EirnanMykchellO.Dicreto,MiguelSalvador\nDeLaSalleUniversity\nManila,Philippines\nmatthew 𝑜𝑟𝑟𝑎𝑙𝑙@𝑑𝑙𝑠𝑢.𝑒𝑑𝑢…",
+      "source": "pdfplumber",
+      "headers": [],
+      "word_count": 158
+    },
+    {
+      "page_number": 2,
+      "text_length": 4348,
+      "text_preview": "Conference’17,July2017,Washington,DC,USA MatthewCorral,EirnanMykchellO.Dicreto,MiguelSalvador\noverlapsowedon’tcutsentencesinhalf.WewilluseRoBERTa-base modelmemorizesthetextinsteadoflearning),wewillgro…",
+      "source": "pdfplumber",
+      "headers": [],
+      "word_count": 99
+    },
+    {
+      "page_number": 3,
+      "text_length": 3722,
+      "text_preview": "DeepTextMiningofCOAAnnualAuditReportsforSystemicFinancialMisappropriation Conference’17,July2017,Washington,DC,USA\nfindimportantinformationfaster.Evenifthemodeldoesn’tbeat [9] YinhanLiu,MyleOtt,NamanG…",
+      "source": "pdfplumber",
+      "headers": [],
+      "word_count": 94
+    }
+  ],
+  "chunks": [
+    {
+      "chunk_id": 0,
+      "token_count": 382,
+      "page_numbers": [
+        1
+      ],
+      "char_offset_start": 0,
+      "char_offset_end": 1610,
+      "overlap_tokens_prev": 0,
+      "text_preview": "Deep Text Mining of COA Annual Audit Reports for Systemic\nFinancial Misappropriation\nMatthewCorral,EirnanMykchellO.Dicreto,MiguelSalvador\nDeLaSalleUniversity\nManila,Philippines\nmatthew 𝑜𝑟𝑟𝑎𝑙𝑙@𝑑𝑙𝑠𝑢.𝑒𝑑𝑢…",
+      "text": "Deep Text Mining of COA Annual Audit Reports for Systemic\nFinancial Misappropriation\nMatthewCorral,EirnanMykchellO.Dicreto,MiguelSalvador\nDeLaSalleUniversity\nManila,Philippines\nmatthew 𝑜𝑟𝑟𝑎𝑙𝑙@𝑑𝑙𝑠𝑢.𝑒𝑑𝑢.𝑝ℎ,𝑒𝑖𝑟𝑛𝑎𝑛 𝑖𝑐𝑟𝑒𝑡𝑜@𝑑𝑙𝑠𝑢.𝑒𝑑𝑢.𝑝ℎ,𝑚𝑖𝑔𝑠 𝑎𝑙𝑣𝑎𝑑𝑜𝑟@𝑑𝑙𝑠𝑢.𝑒𝑑𝑢.𝑝ℎ\n𝑐 𝑑 𝑠\nAbstract Our approach uses text extraction, page coordinates, section\nThePhilippineCommissiononAudit(COA)releasesdetailedan- segmentation,andmulti-tasklearning.Weneedthisbecausethe\nnualauditreports,butfindingevidenceoffinancialmisuseinthese meaningofwordsdependsonthecontext(forexample,\"notliqui-\nlong,messyPDFsisdifficult.Thisproposalasksifadocument-level dated\"meansdifferentthingsdependingonwhoitrefersto),and\nTransformermodelcanautomaticallyfindconnectionsbetweena weneedtolinkentitiestogether,notjustfindkeywords.\nviolation,themonetaryamountinvolved,andtheresponsibleper- Ourexpectedcontributionsare:\nsonororganization.WeplantobuildadatasetfromCOAreports, • aclean,ready-to-usedatasetofCOAreports;\nmanually check a small portion of it, and fine-tune a RoBERTa • amulti-taskmachinelearningmodelthatextractsviolation-\nmodeltoperformnamed-entityrecognition(NER),violationclassi- entity-amountlinks;\nfication,andrelationextraction.Wewillalsouselayoutandsection • anevaluationprocesstoseeifthemodelworksacrossdif-\nfeaturestohelpthemodelreadbetterthanasimplekeywordsearch. ferentLGUsandyears;and\nWewillevaluateourmodelagainstbasickeywordandsentence- • asimpleinterfacetorankfindingsforhumanauditors.\nlevelbaselines.Themaingoalofthisprojectistocreateatoolthat\nhelpshumanauditorsreviewdocumentsfaster,nottoautomatically 2 RelatedWork\ndeclarelegalguilt."
+    },
+    {
+      "chunk_id": 1,
+      "token_count": 278,
+      "page_numbers": [
+        1
+      ],
+      "char_offset_start": 1611,
+      "char_offset_end": 2506,
+      "overlap_tokens_prev": 12,
+      "text_preview": "Pre-trained language models are the foundation of this project. BERTintroducedbidirectionalTransformersandshowedgreatre-\nKeywords sultsfortokenandsentenceclassificationtasks[4].Earlywork\nNaturalLangua…",
+      "text": "Pre-trained language models are the foundation of this project. BERTintroducedbidirectionalTransformersandshowedgreatre-\nKeywords sultsfortokenandsentenceclassificationtasks[4].Earlywork\nNaturalLanguageProcessing,DocumentUnderstanding,Named byLampleetal.showedthatneuralnetworkscoulddoNERwell\nEntityRecognition,FinancialAuditing,PhilippineGovernment withoutrelyingonstrictrule-basedlists[8].Forprocessingdoc-\numentimages,LayoutLMusesboththetextandthe2Dposition\nACMReferenceFormat:\nofwordsonapage,whichisveryhelpfulforreadingformsand\nMatthewCorral,EirnanMykchellO.Dicreto,MiguelSalvador.2026.Deep\nTextMiningofCOAAnnualAuditReportsforSystemicFinancialMisap- reports[15];LayoutLMv2improvesthisbyaddingspatialattention\npropriation.In.ACM,NewYork,NY,USA,3pages.https://doi.org/10.1145/ [16].However,COAreportsareverylong,sowealsoneedmodels\nnnnnnnn.nnnnnnn thatcanunderstandcontextacrossmanysentences."
+    },
+    {
+      "chunk_id": 2,
+      "token_count": 365,
+      "page_numbers": [
+        1
+      ],
+      "char_offset_start": 2507,
+      "char_offset_end": 3798,
+      "overlap_tokens_prev": 11,
+      "text_preview": "TheDocREDpaperpointsoutthisexactproblem:findingrela-\n1 Introduction tionshipsoftenrequiresreadingmultiplesentencesandentitiesin\nadocument[17].Long-documentmodelslikeLongformer[3]pro-\nCOAannualauditrep…",
+      "text": "TheDocREDpaperpointsoutthisexactproblem:findingrela-\n1 Introduction tionshipsoftenrequiresreadingmultiplesentencesandentitiesin\nadocument[17].Long-documentmodelslikeLongformer[3]pro-\nCOAannualauditreportsareimportantpublicrecords,buttheyare\nvideagoodwaytohandlethis,buttheyaren’ttrainedforfinancial\nnotusedenough.Asinglereportcanbehundredsofpageslongand\naudits.\ncontainissuesaboutprocurement,cashadvances,andcontractors. Workingwithgovernmentfinancialtextalsohasspecificvo-\nRightnow,humanreviewershavetomanuallyconnectaviolation\ncabularychallenges.Liuetal.showedwithFinBERTthatstandard\nin one paragraph to a peso amount in a table and a contractor\nmodelsstrugglewithfinancialterms,meaningweneeddomain-\nnamedsomewhereelse.Becausetheinformationisscattered,itis\nspecifictraining[10].OtherrecentpapershighlighthowNLPcan\nhardtotrackrecurringproblemsacrossdifferentlocalgovernment\nbeusedtofindcorruptioningovernmentprocurement[1].While\nunits(LGUs).\nstandardNERisgoodatfindingnamesandamounts[11],thereis\nTheresearchquestionforthisprojectis:Canadocument-level\nstillagapinapplyingthesemodelstolongPhilippineCOAaudit\nTransformerextractmeaningfulfinancialviolationdetailsfrom\nreportstoautomaticallyfindcomplexfinancialviolations. COAreportsmoreaccuratelythanbasickeywordsearchesorsentence-\nlevelmodels?"
+    },
+    {
+      "chunk_id": 3,
+      "token_count": 307,
+      "page_numbers": [
+        1
+      ],
+      "char_offset_start": 3726,
+      "char_offset_end": 4708,
+      "overlap_tokens_prev": 24,
+      "text_preview": "COAreportsmoreaccuratelythanbasickeywordsearchesorsentence-\nlevelmodels? 3 ProposedMethodology\nPermissiontomakedigitalorhardcopiesofallorpartofthisworkforpersonalor Figure1showsourprojectpipeline.Firs…",
+      "text": "COAreportsmoreaccuratelythanbasickeywordsearchesorsentence-\nlevelmodels? 3 ProposedMethodology\nPermissiontomakedigitalorhardcopiesofallorpartofthisworkforpersonalor Figure1showsourprojectpipeline.First,wewillparseeachPDF\nclassroomuseisgrantedwithoutfeeprovidedthatcopiesarenotmadeordistributed\nforprofitorcommercialadvantageandthatcopiesbearthisnoticeandthefullcitation togetthetext,pagenumbers,boundingboxes,tables,andheaders.\nonthefirstpage.Copyrightsforcomponentsofthisworkownedbyothersthanthe Ifapageisscannedandhasnotext,wewilluseOCRtoreadit.\nauthor(s)mustbehonored.Abstractingwithcreditispermitted.Tocopyotherwise,or\nWewillcleantheextractedtextbyfixingspacingandcurrency\nrepublish,topostonserversortoredistributetolists,requirespriorspecificpermission\nand/orafee.Requestpermissionsfrompermissions@acm.org. symbols,butwewillkeeptrackofwherethetextcamefromon\nConference’17,Washington,DC,USA theoriginalpage.\n©2026Copyrightheldbytheowner/author(s).PublicationrightslicensedtoACM."
+    },
+    {
+      "chunk_id": 4,
+      "token_count": 382,
+      "page_numbers": [
+        1,
+        2
+      ],
+      "char_offset_start": 4709,
+      "char_offset_end": 5798,
+      "overlap_tokens_prev": 14,
+      "text_preview": "SincestandardTransformerscanonlyread512tokensatatime,\nACMISBN978-x-xxxx-xxxx-x/YYYY/MM\nhttps://doi.org/10.1145/nnnnnnn.nnnnnnn wewillsplitthereportsintochunksof384tokens,witha64-token\n\nConference’17,J…",
+      "text": "SincestandardTransformerscanonlyread512tokensatatime,\nACMISBN978-x-xxxx-xxxx-x/YYYY/MM\nhttps://doi.org/10.1145/nnnnnnn.nnnnnnn wewillsplitthereportsintochunksof384tokens,witha64-token\n\nConference’17,July2017,Washington,DC,USA MatthewCorral,EirnanMykchellO.Dicreto,MiguelSalvador\noverlapsowedon’tcutsentencesinhalf.WewilluseRoBERTa-base modelmemorizesthetextinsteadoflearning),wewillgroupthe\nasourmainencoderbecauseitperformsbetterthantheoriginal train/testsplitsbyLGUandyear.Wewillalsomakesurethemodel\nBERT[9].Thechunkrepresentationswillbecombinedusinga outputsaconfidencescoreforitspredictions,sohumanreviewers\ntwo-layerdocumentTransformertohelpthemodelunderstand knowwhichfindingsmightbeuncertain.\nlongtexts[12].TheNERpartofthemodelwilllookforspecific Analysisprotocol.Wewillreportourresultswith95%confi-\ntags:PERSON,ORGANIZATION,LGU,CONTRACTOR,AMOUNT, denceintervalsanddoanerroranalysistoseewherethemodel\nDATE,PROJECT,andVIOLATION. getsconfused(forexample,ifOCRerrorscausedthemistake).We\nwillalsodoasmalluserstudywiththreereviewerstoseeifthe\nmodelactuallyhelpsthemreviewdocumentsfaster."
+    },
+    {
+      "chunk_id": 5,
+      "token_count": 350,
+      "page_numbers": [
+        2
+      ],
+      "char_offset_start": 5799,
+      "char_offset_end": 6797,
+      "overlap_tokens_prev": 11,
+      "text_preview": "4 ExperimentalPlan\nDataset.Weplantodownloadaround1,000searchableCOAannual\nauditreportPDFsfrom2018to2023,coveringatleast100LGUs.We\nwillsplitthedatainto70%training,15%validation,and15%testing. Wewillspl…",
+      "text": "4 ExperimentalPlan\nDataset.Weplantodownloadaround1,000searchableCOAannual\nauditreportPDFsfrom2018to2023,coveringatleast100LGUs.We\nwillsplitthedatainto70%training,15%validation,and15%testing. WewillsplitthembyLGU-yeartomakesurethemodeldoesn’tjust\nmemorizespecificlocalgovernments.Preprocessingwillinclude\nPDFtextextraction,OCRifneeded,andsentencesplitting. Baselines.Wewillcompareourmodelagainstfourbaselines:\n(B1)atraditionalTF-IDFandSVMmodel[7]toseeifdeeplearning\nisevennecessary;(B2)abasicRoBERTamodelthatonlylooksat\nsinglesentences;(B3)aLongformermodelthathandleslongtext\nbutignoresthepagelayout;and(B4)aLayoutLMv3modeltotest\nifknowingthevisuallayouthelps. Hyperparametertuning.Wewilltunethelearningrate,batch\nsize,chunklength,anddropout.Wewillrunthemodelwithfive\ndifferentrandomseedsandchoosethebestversionbasedonthe\nvalidationF1score. Ablations.Toseewhichpartsofourmodelareactuallyuse-\nful,wewilltryremovingcomponentsonebyone,likethelayout\nfeatures,document-levelattention,ortheOCRfallback[6]."
+    },
+    {
+      "chunk_id": 6,
+      "token_count": 356,
+      "page_numbers": [
+        2
+      ],
+      "char_offset_start": 6639,
+      "char_offset_end": 7725,
+      "overlap_tokens_prev": 53,
+      "text_preview": "Ablations.Toseewhichpartsofourmodelareactuallyuse-\nful,wewilltryremovingcomponentsonebyone,likethelayout\nfeatures,document-levelattention,ortheOCRfallback[6]. Evaluationmetrics.FollowingstandardNLPpra…",
+      "text": "Ablations.Toseewhichpartsofourmodelareactuallyuse-\nful,wewilltryremovingcomponentsonebyone,likethelayout\nfeatures,document-levelattention,ortheOCRfallback[6]. Evaluationmetrics.FollowingstandardNLPpractices[14],we\nFigure1:Proposedarchitecture.Shareddocumentrepresenta-\nwillevaluatetheNERusingprecision,recall,andF1scoreswith\ntionsfeedthreesupervisedheads;allpredictedtuplesretain\nexactspanmatching.Fortheoverallproject,ourmainmetricwill\nsource-pageandsentenceevidence.\nbetheend-to-endtupleF1score(diditcorrectlylinktheviolation,\namount,andentitytogether?).Wewillalsomeasurehowfastthe\nThemodelwillalsoclassifyviolationsintofivecategories:unau-\nmodelruns.\nthorizedexpenditure,unliquidatedcashadvance,procurementir-\nImplementation.WewillwritethecodeusingPyTorchand\nregularity,unsupporteddisbursement,andsuspiciouscontractor\nHuggingFaceTransformers.WewillusepdfplumberandTesseract\nactivity.Tofindrelationshipsbetweenentities,wewilluseascor-\nforthePDFextraction.WewillruntheexperimentsonanNVIDIA\ningmodel[5]topredictlinkslikeINVOLVES,AMOUNT_OF,or\nRTX4090GPU.Trainingshouldtakeabout4to8hours."
+    },
+    {
+      "chunk_id": 7,
+      "token_count": 382,
+      "page_numbers": [
+        2
+      ],
+      "char_offset_start": 7726,
+      "char_offset_end": 8963,
+      "overlap_tokens_prev": 14,
+      "text_preview": "RESPONSIBLE_FOR.Doingallthesetaskstogetherinonemodel\nhelpspreventerrorsthatusuallyhappenwhentasksaredoneone\n5 Risks,Ethics,andReproducibility\nbyone[2]. EventhoughCOAreportsarepublicdocuments,westillne…",
+      "text": "RESPONSIBLE_FOR.Doingallthesetaskstogetherinonemodel\nhelpspreventerrorsthatusuallyhappenwhentasksaredoneone\n5 Risks,Ethics,andReproducibility\nbyone[2]. EventhoughCOAreportsarepublicdocuments,westillneedtobe\nForourdata,wewilluseatwo-stepannotationprocess.First,\ncarefulwithnamesandfinancialallegations.Wewillpresentthis\nwewillusesimplecoderulestofindobviousdatesandcurrency\nprojectasasearchtooltohelpauditors,notasanAIthatdecides\namounts.Then,twohumanannotatorswillmanuallycheckand\nifsomeonebrokethelaw.Wewillmakesurethemodelpointsto\nlabeltheentitiesandrelationshipsin250reports.Therestofthe\ntheexactsentenceitusedforitsprediction.Expectedrisksinclude\nreportswillbelabeledautomaticallyusingstrongrulestohelp\nOCRmistakesandchangingreportformats,whichwewilltrytofix\npre-trainthemodel[13].Thefinaltestsetwillbecompletelyhand-\nduringpreprocessing.Wewillreleaseourcodeanddatasetsplitsif\nlabeled.\nthedatadistributionrulesallowit. Outputschemaanddecoding.Thefinaloutputforeachreport\nwillbeaJSONfilewiththedocumentdetails,entities,violations,\nand relationships. During testing, the model will only look for 6 ExpectedOutcome\nrelationshipsbetweenentitiesthatarewithin12sentencesofeach ThisprojectwilltestifaTransformermodelcanturnlong,messy\nother."
+    },
+    {
+      "chunk_id": 8,
+      "token_count": 366,
+      "page_numbers": [
+        2,
+        3
+      ],
+      "char_offset_start": 8779,
+      "char_offset_end": 9896,
+      "overlap_tokens_prev": 48,
+      "text_preview": "During testing, the model will only look for 6 ExpectedOutcome\nrelationshipsbetweenentitiesthatarewithin12sentencesofeach ThisprojectwilltestifaTransformermodelcanturnlong,messy\nother. COAreportsintoa…",
+      "text": "During testing, the model will only look for 6 ExpectedOutcome\nrelationshipsbetweenentitiesthatarewithin12sentencesofeach ThisprojectwilltestifaTransformermodelcanturnlong,messy\nother. COAreportsintoaclear,connectedgraphoffinancialfindings.We\nLeakageanduncertaintycontrols.LGUsoftencopy-paste willconsidertheprojectasuccessifourmodelgetsasignificantly\nthesametextfromyeartoyear.Topreventdataleakage(wherethe higherF1scorethanthebaselinemodelsandhelpshumanauditors\n\nDeepTextMiningofCOAAnnualAuditReportsforSystemicFinancialMisappropriation Conference’17,July2017,Washington,DC,USA\nfindimportantinformationfaster.Evenifthemodeldoesn’tbeat [9] YinhanLiu,MyleOtt,NamanGoyal,JingfeiDu,MandarJoshi,DanqiChen,Omer\nthebaselines,ourerroranalysiswillstillshowwhatmakesCOA Levy,MikeLewis,LukeZettlemoyer,andVeselinStoyanov.2019.RoBERTa:A\nreports so hard for NLP models to read, which can help future\nrobustlyoptimizedBERTpretrainingapproach.arXivpreprintarXiv:1907.11692\n(2019).\nresearch. [10] ZhuangLiu,DuyuHuang,KaiHuang,ZhuangLi,andJunZhao.2020.FinBERT:A\nPre-trainedFinancialLanguageRepresentationModelforFinancialTextMining."
+    },
+    {
+      "chunk_id": 9,
+      "token_count": 261,
+      "page_numbers": [
+        3
+      ],
+      "char_offset_start": 9897,
+      "char_offset_end": 10630,
+      "overlap_tokens_prev": 18,
+      "text_preview": "References\nInProceedingsoftheTwenty-NinthInternationalJointConferenceonArtificial\nIntelligence(IJCAI).4513–4519.doi:10.24963/ijcai.2020/622\n[1] 2024.NaturalLanguageProcessing(NLP)forSustainablePublicA…",
+      "text": "References\nInProceedingsoftheTwenty-NinthInternationalJointConferenceonArtificial\nIntelligence(IJCAI).4513–4519.doi:10.24963/ijcai.2020/622\n[1] 2024.NaturalLanguageProcessing(NLP)forSustainablePublicAdministration. [11] DavidNadeauandSatoshiSekine.2007.Asurveyofnamedentityrecognition\nInAIApplicationsforSustainablePublicAdministration.IGIGlobal.doi:10.4018/ andclassification.LingvisticaeInvestigationes30,1(2007),3–26. 979-8-3693-8372-8 [12] RaghavendraPappagari,PiotrZelasko,JesusVillalba,YishayCarmiel,andNajim\n[2] GiannisBekoulis,JohannesDeleu,ThomasDemeester,andChrisDevelder.2018. Dehak.2019.Hierarchicaltransformersforlongdocumentclassification.In2019\nJointentityrecognitionandrelationextractionasamulti-headselectionproblem."
+    },
+    {
+      "chunk_id": 10,
+      "token_count": 351,
+      "page_numbers": [
+        3
+      ],
+      "char_offset_start": 10485,
+      "char_offset_end": 11478,
+      "overlap_tokens_prev": 42,
+      "text_preview": "Dehak.2019.Hierarchicaltransformersforlongdocumentclassification.In2019\nJointentityrecognitionandrelationextractionasamulti-headselectionproblem. IEEEAutomaticSpeechRecognitionandUnderstandingWorkshop…",
+      "text": "Dehak.2019.Hierarchicaltransformersforlongdocumentclassification.In2019\nJointentityrecognitionandrelationextractionasamulti-headselectionproblem. IEEEAutomaticSpeechRecognitionandUnderstandingWorkshop(ASRU).IEEE,\nExpertSystemswithApplications114(2018),34–45.doi:10.1016/j.eswa.2018.07.032 838–844.\n[3] IzBeltagy,MatthewE.Peters,andArmanCohan.2020.Longformer:TheLong- [13] AlexanderRatner,StephenHBach,HenryEhrenberg,JasonFries,SenWu,and\nDocumentTransformer.arXivpreprintarXiv:2004.05150(2020). ChristopherRé.2017.Snorkel:Rapidtrainingdatacreationwithweaksupervision.\n[4] JacobDevlin,Ming-WeiChang,KentonLee,andKristinaToutanova.2019.BERT: ProceedingsoftheVLDBEndowment11,3(2017),269–282. Pre-trainingofDeepBidirectionalTransformersforLanguageUnderstanding.In [14] ErikFTjongKimSangandFienDeMeulder.2003.IntroductiontotheCoNLL-\nProceedingsofNAACL-HLT.4171–4186.doi:10.18653/v1/N19-1423 2003sharedtask:Language-independentnamedentityrecognition.InProceedings\n[5] MarkusEbertsandAdrianUlges.2020."
+    },
+    {
+      "chunk_id": 11,
+      "token_count": 312,
+      "page_numbers": [
+        3
+      ],
+      "char_offset_start": 11479,
+      "char_offset_end": 12281,
+      "overlap_tokens_prev": 19,
+      "text_preview": "Span-basedjointentityandrelation oftheSeventhConferenceonNaturalLanguageLearningatHLT-NAACL2003.\nextractionwithtransformerpre-training.In24thEuropeanConferenceonArtificial 142–147. Intelligence(ECAI20…",
+      "text": "Span-basedjointentityandrelation oftheSeventhConferenceonNaturalLanguageLearningatHLT-NAACL2003.\nextractionwithtransformerpre-training.In24thEuropeanConferenceonArtificial 142–147. Intelligence(ECAI2020).IOSPress,2006–2013. [15] YihengXu,MinghaoLi,LeiCui,ShaohanHuang,FuruWei,andMingZhou.2020.\n[6] AhmedHamdi,AntoineJean-Caurant,NicolasSidère,MickaëlCoustaty,and LayoutLM:Pre-trainingofTextandLayoutforDocumentImageUnderstanding. AntoineDoucet.2021.TheImpactofOCRQualityonNamedEntityRecognition. InProceedingsofKDD.1192–1200.doi:10.1145/3394486.3403172\nInLinkingTheoryandPracticeofDigitalLibraries:25thInternationalConference. [16] YangXu,YihengXu,TengchaoLv,LeiCui,FuruWei,GuoxinWang,YijuanLu,\nSpringer,22–35. DineiFlorencio,ChaZhang,WanxiangChe,MinZhang,andLidongZhou.2021.\n[7] ThorstenJoachims.1998."
+    },
+    {
+      "chunk_id": 12,
+      "token_count": 318,
+      "page_numbers": [
+        3
+      ],
+      "char_offset_start": 12190,
+      "char_offset_end": 12966,
+      "overlap_tokens_prev": 43,
+      "text_preview": "DineiFlorencio,ChaZhang,WanxiangChe,MinZhang,andLidongZhou.2021.\n[7] ThorstenJoachims.1998. TextcategorizationwithSupportVectorMachines: LayoutLMv2:Multi-modalPre-trainingforVisually-richDocumentUnder…",
+      "text": "DineiFlorencio,ChaZhang,WanxiangChe,MinZhang,andLidongZhou.2021.\n[7] ThorstenJoachims.1998. TextcategorizationwithSupportVectorMachines: LayoutLMv2:Multi-modalPre-trainingforVisually-richDocumentUnderstand-\nLearningwithmanyrelevantfeatures.InEuropeanconferenceonmachinelearning. ing.InProceedingsofACL-IJCNLP.doi:10.18653/v1/2021.acl-long.201\nSpringer,137–142. [17] YuanYao,DemingYe,PengLi,XuHan,YankaiLin,ZhenghaoLiu,Zhiyuan\n[8] GuillaumeLample,MiguelBallesteros,SandeepSubramanian,KazuyaKawakami, Liu,LixinHuang,JieZhou,andMaosongSun.2019. DocRED:ALarge-Scale\nandChrisDyer.2016.NeuralArchitecturesforNamedEntityRecognition.In Document-LevelRelationExtractionDataset.InProceedingsofACL.764–777. ProceedingsofNAACL-HLT.260–270.doi:10.18653/v1/N16-1030 doi:10.18653/v1/P19-1074"
+    }
+  ]
+}
