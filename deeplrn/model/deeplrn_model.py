@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 
-from deeplrn.config import NER_CFG, VIOLATION_CFG, RELATION_CFG
+from deeplrn.config import FINDING_CFG, NER_CFG, RELATION_CFG
 
 logger = logging.getLogger(__name__)
 
@@ -34,19 +34,30 @@ class ModelConfig:
     # Encoder
     encoder_name: str = "roberta-base"
     freeze_layers: int = 0
+    encoder_uses_2d_positions: bool = False
 
     # Document Transformer
     doc_num_layers: int = 2
     doc_num_heads: int = 8
     doc_dropout: float = 0.1
     max_chunks: int = 128
+    use_document_context: bool = True
+
+    # Token-level layout fusion and ablations
+    use_layout: bool = True
+    use_page_embeddings: bool = True
+    use_section_embeddings: bool = True
+    use_bbox_embeddings: bool = True
+    max_pages: int = 512
+    max_sections: int = 256
+    bbox_bins: int = 1024
 
     # Head dimensions (derived from encoder, but can override)
     hidden_size: int = 768
 
     # Task sizes
     num_ner_tags: int = 17       # len(NER_CFG.tags)
-    num_violation_classes: int = 5  # len(VIOLATION_CFG.labels)
+    num_violation_classes: int = 5  # legacy field name; len(FINDING_CFG.labels)
     num_relations: int = 4       # 3 types + NO_RELATION
 
     # Head dropout
@@ -87,6 +98,7 @@ class DeepLRNModel(nn.Module):
         from deeplrn.model.heads.ner import NERHead
         from deeplrn.model.heads.classifier import ViolationClassifier
         from deeplrn.model.heads.relation import RelationExtractor
+        from deeplrn.model.layout import LayoutFeatureEncoder
 
         # ── Sub-modules ──────────────────────────────────────────────
         self.encoder = ChunkEncoder(
@@ -95,6 +107,17 @@ class DeepLRNModel(nn.Module):
         )
         # Ensure hidden_size matches what the encoder actually provides
         cfg.hidden_size = self.encoder.hidden_size
+
+        self.layout_encoder = LayoutFeatureEncoder(
+            hidden_size=cfg.hidden_size,
+            max_pages=cfg.max_pages,
+            max_sections=cfg.max_sections,
+            bbox_bins=cfg.bbox_bins,
+            use_page=cfg.use_layout and cfg.use_page_embeddings,
+            use_section=cfg.use_layout and cfg.use_section_embeddings,
+            use_bbox=cfg.use_layout and cfg.use_bbox_embeddings,
+            dropout=cfg.head_dropout,
+        )
 
         self.doc_transformer = DocumentTransformer(
             hidden_size=cfg.hidden_size,
@@ -138,8 +161,12 @@ class DeepLRNModel(nn.Module):
         attention_mask: torch.Tensor,
         chunk_mask: torch.Tensor | None = None,
         ner_labels: torch.Tensor | None = None,
+        finding_labels: torch.Tensor | None = None,
         violation_labels: torch.Tensor | None = None,
         relation_triples: list | None = None,
+        page_ids: torch.Tensor | None = None,
+        section_ids: torch.Tensor | None = None,
+        bboxes: torch.Tensor | None = None,
     ) -> Dict[str, Any]:
         """Full forward pass with optional loss computation.
 
@@ -178,18 +205,44 @@ class DeepLRNModel(nn.Module):
         flat_ids = input_ids.view(-1, seq_len)
         flat_mask = attention_mask.view(-1, seq_len)
 
-        token_embeddings, cls_embeddings = self.encoder(flat_ids, flat_mask)
+        if cfg.encoder_uses_2d_positions:
+            encoder_boxes = (
+                bboxes.view(-1, seq_len, 4)
+                if bboxes is not None
+                else torch.zeros(
+                    (*flat_ids.shape, 4), dtype=torch.long, device=flat_ids.device
+                )
+            )
+            token_embeddings, cls_embeddings = self.encoder(
+                flat_ids, flat_mask, bboxes=encoder_boxes
+            )
+        else:
+            token_embeddings, cls_embeddings = self.encoder(flat_ids, flat_mask)
         # token_embeddings: (batch*num_chunks, seq_len, hidden)
         # cls_embeddings:   (batch*num_chunks, hidden)
 
         hidden = cfg.hidden_size
+
+        if cfg.use_layout:
+            token_embeddings = self.layout_encoder(
+                token_embeddings,
+                page_ids=page_ids.view(-1, seq_len) if page_ids is not None else None,
+                section_ids=(
+                    section_ids.view(-1, seq_len) if section_ids is not None else None
+                ),
+                bboxes=bboxes.view(-1, seq_len, 4) if bboxes is not None else None,
+            )
 
         # Reshape back to document structure
         token_embs = token_embeddings.view(batch_size, num_chunks, seq_len, hidden)
         cls_embs = cls_embeddings.view(batch_size, num_chunks, hidden)
 
         # ── 2. Document Transformer ──────────────────────────────────
-        enriched_cls = self.doc_transformer(cls_embs, chunk_mask)
+        enriched_cls = (
+            self.doc_transformer(cls_embs, chunk_mask)
+            if cfg.use_document_context
+            else cls_embs
+        )
         # enriched_cls: (batch, num_chunks, hidden)
 
         # ── 3. NER Head ─────────────────────────────────────────────
@@ -243,8 +296,13 @@ class DeepLRNModel(nn.Module):
             total_loss = total_loss + cfg.ner_loss_weight * ner_loss
             has_loss = True
 
-        if violation_labels is not None:
-            cls_loss = self.classifier.compute_loss(cls_logits, violation_labels)
+        if finding_labels is not None and violation_labels is not None:
+            raise ValueError("pass finding_labels or violation_labels, not both")
+        effective_finding_labels = (
+            finding_labels if finding_labels is not None else violation_labels
+        )
+        if effective_finding_labels is not None:
+            cls_loss = self.classifier.compute_loss(cls_logits, effective_finding_labels)
             result["cls_loss"] = cls_loss
             total_loss = total_loss + cfg.cls_loss_weight * cls_loss
             has_loss = True
@@ -323,6 +381,7 @@ class DeepLRNModel(nn.Module):
         counts = {}
         for name, module in [
             ("encoder", self.encoder),
+            ("layout_encoder", self.layout_encoder),
             ("doc_transformer", self.doc_transformer),
             ("ner_head", self.ner_head),
             ("classifier", self.classifier),

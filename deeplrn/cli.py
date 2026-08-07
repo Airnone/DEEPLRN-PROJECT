@@ -38,11 +38,17 @@ def _serialize_pages(pages: List[PageData]) -> List[Dict[str, Any]]:
     return [
         {
             "page_number": p.page_number,
+            "text": p.text,
             "text_length": len(p.text),
             "text_preview": p.text[:200] + ("…" if len(p.text) > 200 else ""),
             "source": p.source,
             "headers": p.headers,
             "word_count": len(p.word_boxes),
+            "word_boxes": [
+                {"text": word.text, "bbox": list(word.bbox)}
+                for word in p.word_boxes
+            ],
+            "metadata": p.metadata,
         }
         for p in pages
     ]
@@ -60,6 +66,7 @@ def _serialize_chunks(chunks: List[TextChunk]) -> List[Dict[str, Any]]:
             "overlap_tokens_prev": c.overlap_tokens_prev,
             "text_preview": c.text[:200] + ("…" if len(c.text) > 200 else ""),
             "text": c.text,
+            "token_ids": c.token_ids,
         }
         for c in chunks
     ]

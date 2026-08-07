@@ -22,6 +22,9 @@ class ChunkConfig:
     tokenizer_name: str = "roberta-base"
     """Hugging Face model id used for sub-word tokenisation."""
 
+    single_sentence_chunks: bool = False
+    """Emit one sentence per chunk for the sentence-level baseline."""
+
 
 @dataclass(frozen=True)
 class ExtractionConfig:
@@ -55,20 +58,20 @@ class NERConfig:
         "B-AMOUNT", "I-AMOUNT",
         "B-DATE", "I-DATE",
         "B-PROJECT", "I-PROJECT",
-        "B-VIOLATION", "I-VIOLATION",
+        "B-FINDING", "I-FINDING",
     ])
 
 
 @dataclass(frozen=True)
-class ViolationClasses:
-    """The five violation categories the classifier must predict."""
+class FindingClasses:
+    """The five neutral audit-finding categories predicted by the model."""
 
     labels: List[str] = field(default_factory=lambda: [
         "unauthorized_expenditure",
         "unliquidated_cash_advance",
         "procurement_irregularity",
         "unsupported_disbursement",
-        "suspicious_contractor_activity",
+        "contractor_related_concern",
     ])
 
 
@@ -79,16 +82,38 @@ class RelationConfig:
     relation_types: List[str] = field(default_factory=lambda: [
         "INVOLVES",
         "AMOUNT_OF",
-        "RESPONSIBLE_FOR",
+        "ASSOCIATED_WITH",
     ])
 
     sentence_window: int = 12
     """Max sentence distance between two entities for a candidate relation."""
 
 
+@dataclass(frozen=True)
+class LayoutConfig:
+    """Configuration for optional token-level document-layout features."""
+
+    enabled: bool = True
+    use_page_embeddings: bool = True
+    use_section_embeddings: bool = True
+    use_bbox_embeddings: bool = True
+    max_pages: int = 512
+    max_sections: int = 256
+    bbox_bins: int = 1024
+    feature_dropout: float = 0.1
+
+
 # ── Convenience singleton instances ──────────────────────────────────────────
 CHUNK_CFG = ChunkConfig()
 EXTRACT_CFG = ExtractionConfig()
 NER_CFG = NERConfig()
-VIOLATION_CFG = ViolationClasses()
+FINDING_CFG = FindingClasses()
+# Backwards-compatible alias for code and prototype files written before the
+# neutral terminology migration. New code should use FINDING_CFG.
+VIOLATION_CFG = FINDING_CFG
 RELATION_CFG = RelationConfig()
+LAYOUT_CFG = LayoutConfig()
+
+# Backwards-compatible class alias. It can be removed after old serialized
+# configuration files have been migrated.
+ViolationClasses = FindingClasses

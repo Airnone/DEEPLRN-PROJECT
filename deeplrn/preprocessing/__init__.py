@@ -6,7 +6,7 @@ PDF text extraction and overlapping-window chunking.
 """
 
 from deeplrn.preprocessing.pdf_extractor import PDFExtractor, PageData, WordBox
-from deeplrn.preprocessing.chunker import DocumentChunker, TextChunk
+from deeplrn.preprocessing.chunker import DocumentChunker, TextChunk, concatenate_pages
 
 __all__ = [
     "PDFExtractor",
@@ -14,4 +14,5 @@ __all__ = [
     "WordBox",
     "DocumentChunker",
     "TextChunk",
+    "concatenate_pages",
 ]

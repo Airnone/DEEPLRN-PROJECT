@@ -1,89 +1,58 @@
-"""
-deeplrn.pipeline
-~~~~~~~~~~~~~~~~
-
-End-to-end inference pipeline: PDF → preprocessing → model → structured JSON.
-
-Usage
------
->>> from deeplrn.pipeline import InferencePipeline
->>> pipe = InferencePipeline.from_checkpoint("checkpoints/best_model.pt")
->>> result = pipe.run("path/to/coa_report.pdf")
->>> result["violations"]
-[{'type': 'procurement_irregularity', 'confidence': 0.92, 'entities': [...]}]
-"""
+"""Evidence-linked PDF-to-JSON inference for a trained DEEPLRN checkpoint."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 import json
 import logging
 import time
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from transformers import AutoTokenizer
 
+from deeplrn.checkpoints import load_checkpoint
 from deeplrn.config import (
     CHUNK_CFG,
     EXTRACT_CFG,
+    FINDING_CFG,
     NER_CFG,
-    VIOLATION_CFG,
     RELATION_CFG,
     ChunkConfig,
     ExtractionConfig,
 )
-from deeplrn.preprocessing.pdf_extractor import PDFExtractor, PageData
 from deeplrn.preprocessing.chunker import DocumentChunker, TextChunk
+from deeplrn.preprocessing.pdf_extractor import PDFExtractor, PageData
+from deeplrn.training.builder import build_inference_chunks
+
 
 logger = logging.getLogger(__name__)
 
 
-# ── Entity container ─────────────────────────────────────────────────────────
-
 @dataclass
 class Entity:
-    """A named entity extracted from the document."""
-
     text: str
-    entity_type: str           # e.g. "PERSON", "AMOUNT", "VIOLATION"
+    entity_type: str
     chunk_id: int
     token_start: int
     token_end: int
     page_numbers: List[int] = field(default_factory=list)
+    sentence_id: int = -1
+    char_start: int = -1
+    char_end: int = -1
     confidence: float = 0.0
 
 
 @dataclass
 class Relation:
-    """A predicted relationship between two entities."""
-
     head_entity: Entity
     tail_entity: Entity
-    relation_type: str         # e.g. "INVOLVES", "AMOUNT_OF", "RESPONSIBLE_FOR"
+    relation_type: str
     confidence: float = 0.0
 
 
-# ── Pipeline ─────────────────────────────────────────────────────────────────
-
 class InferencePipeline:
-    """End-to-end inference: PDF → structured JSON.
-
-    Parameters
-    ----------
-    model : DeepLRNModel
-        A trained multi-task model (on CPU or GPU).
-    tokenizer : PreTrainedTokenizerBase
-        The tokenizer matching the model's encoder.
-    device : str
-        'cuda' or 'cpu'.
-    extract_cfg : ExtractionConfig
-        PDF extraction settings.
-    chunk_cfg : ChunkConfig
-        Chunking settings.
-    """
-
     def __init__(
         self,
         model: torch.nn.Module,
@@ -91,7 +60,10 @@ class InferencePipeline:
         device: str = "cpu",
         extract_cfg: ExtractionConfig | None = None,
         chunk_cfg: ChunkConfig | None = None,
+        relation_threshold: float = 0.5,
     ) -> None:
+        if not 0.0 <= relation_threshold <= 1.0:
+            raise ValueError("relation_threshold must be between zero and one")
         self.model = model
         self.model.eval()
         self.tokenizer = tokenizer
@@ -99,119 +71,80 @@ class InferencePipeline:
         self.model.to(self.device)
         self.extract_cfg = extract_cfg or EXTRACT_CFG
         self.chunk_cfg = chunk_cfg or CHUNK_CFG
-
-        # Tag & label lookups
-        self.id2tag = {i: t for i, t in enumerate(NER_CFG.tags)}
-        self.id2violation = {i: v for i, v in enumerate(VIOLATION_CFG.labels)}
+        self.relation_threshold = relation_threshold
+        self.id2tag = {index: tag for index, tag in enumerate(NER_CFG.tags)}
+        self.id2finding = {index: label for index, label in enumerate(FINDING_CFG.labels)}
         self.id2relation = {0: "NO_RELATION"}
-        for i, r in enumerate(RELATION_CFG.relation_types, start=1):
-            self.id2relation[i] = r
-
-    # ── Class method for loading ─────────────────────────────────────
+        self.id2relation.update(
+            {index: label for index, label in enumerate(RELATION_CFG.relation_types, start=1)}
+        )
 
     @classmethod
     def from_checkpoint(
         cls,
         checkpoint_path: str | Path,
         device: str = "auto",
-    ) -> InferencePipeline:
-        """Load a pipeline from a saved checkpoint.
-
-        Parameters
-        ----------
-        checkpoint_path : str | Path
-            Path to the checkpoint file (saved by Trainer.save_checkpoint).
-        device : str
-            'cuda', 'cpu', or 'auto' (picks GPU if available).
-        """
+        relation_threshold: float = 0.5,
+    ) -> "InferencePipeline":
         from deeplrn.model.deeplrn_model import DeepLRNModel, ModelConfig
 
-        checkpoint_path = Path(checkpoint_path)
         if device == "auto":
             device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-
-        # Reconstruct model config
-        model_cfg = checkpoint.get("model_config", ModelConfig())
-        if isinstance(model_cfg, dict):
-            model_cfg = ModelConfig(**model_cfg)
-
-        model = DeepLRNModel(config=model_cfg)
+        checkpoint = load_checkpoint(checkpoint_path, map_location=device)
+        model_config = ModelConfig(**checkpoint["model_config"])
+        model = DeepLRNModel(model_config)
         model.load_state_dict(checkpoint["model_state_dict"])
-
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_cfg.encoder_name,
-            use_fast=True,
+        tokenizer = AutoTokenizer.from_pretrained(model_config.encoder_name, use_fast=True)
+        return cls(
+            model,
+            tokenizer,
+            device=device,
+            relation_threshold=relation_threshold,
         )
-
-        return cls(model=model, tokenizer=tokenizer, device=device)
-
-    # ── Main inference ───────────────────────────────────────────────
 
     @torch.no_grad()
     def run(self, pdf_path: str | Path) -> Dict[str, Any]:
-        """Run full inference on a single PDF.
-
-        Returns
-        -------
-        dict
-            Structured output with document info, entities, violations,
-            and relationships.
-        """
         pdf_path = Path(pdf_path)
-        t0 = time.perf_counter()
-
-        # ── 1. Extract & chunk ───────────────────────────────────────
-        extractor = PDFExtractor(pdf_path, config=self.extract_cfg)
-        pages = extractor.extract()
-
-        chunker = DocumentChunker(config=self.chunk_cfg, tokenizer=self.tokenizer)
-        chunks = chunker.chunk_pages(pages)
-
+        started = time.perf_counter()
+        pages = PDFExtractor(pdf_path, config=self.extract_cfg).extract()
+        chunks = DocumentChunker(
+            config=self.chunk_cfg, tokenizer=self.tokenizer
+        ).chunk_pages(pages)
         if not chunks:
-            logger.warning("No chunks produced from %s", pdf_path.name)
             return self._empty_result(pdf_path)
 
-        # ── 2. Prepare model inputs ──────────────────────────────────
-        input_ids, attention_mask = self._prepare_inputs(chunks)
-
-        # ── 3. Forward pass ──────────────────────────────────────────
+        features = self._prepare_inputs(pages, chunks)
         outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
+            input_ids=features["input_ids"],
+            attention_mask=features["attention_mask"],
+            page_ids=features["page_ids"],
+            section_ids=features["section_ids"],
+            bboxes=features["bboxes"],
         )
+        entities = self._decode_ner(outputs["ner_logits"], features)
+        finding = self._decode_finding(outputs["cls_logits"])
+        relations = self._predict_relations(entities, features)
 
-        # ── 4. Decode predictions ────────────────────────────────────
-        entities = self._decode_ner(outputs["ner_logits"], attention_mask, chunks)
-        violation = self._decode_violation(outputs["cls_logits"])
-
-        # ── 5. Run relation extraction on predicted entities ─────────
-        relations = self._predict_relations(entities, input_ids, attention_mask, chunks)
-
-        # ── 6. Assemble JSON ─────────────────────────────────────────
-        t_total = time.perf_counter() - t0
-
+        elapsed = time.perf_counter() - started
         result = {
             "document": {
                 "filename": pdf_path.name,
                 "total_pages": len(pages),
                 "total_chunks": len(chunks),
-                "inference_time_s": round(t_total, 2),
+                "inference_time_s": round(elapsed, 2),
             },
-            "violation": {
-                "predicted_type": violation["label"],
-                "confidence": violation["confidence"],
-                "all_scores": violation["all_scores"],
-            },
-            "entities": [self._entity_to_dict(e) for e in entities],
-            "relationships": [self._relation_to_dict(r) for r in relations],
+            "finding": finding,
+            "entities": [self._entity_to_dict(entity) for entity in entities],
+            "relationships": [self._relation_to_dict(relation) for relation in relations],
         }
-
         logger.info(
-            "Inference on %s: %d entities, violation=%s (%.2f), %d relations in %.1fs",
-            pdf_path.name, len(entities), violation["label"],
-            violation["confidence"], len(relations), t_total,
+            "Inference on %s: %d entities, finding=%s (%.3f), %d relations in %.1fs",
+            pdf_path.name,
+            len(entities),
+            finding["predicted_type"],
+            finding["confidence"],
+            len(relations),
+            elapsed,
         )
         return result
 
@@ -220,250 +153,236 @@ class InferencePipeline:
         pdf_path: str | Path,
         output_path: str | Path | None = None,
     ) -> Dict[str, Any]:
-        """Run inference and write the JSON result to disk."""
-        pdf_path = Path(pdf_path)
-        result = self.run(pdf_path)
-
-        if output_path is None:
-            output_path = pdf_path.with_suffix(".json")
-        else:
-            output_path = Path(output_path)
-
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2, ensure_ascii=False)
-
-        logger.info("Saved result to %s", output_path)
+        source = Path(pdf_path)
+        result = self.run(source)
+        target = Path(output_path) if output_path is not None else source.with_suffix(".json")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("w", encoding="utf-8") as stream:
+            json.dump(result, stream, indent=2, ensure_ascii=False)
         return result
-
-    # ── Input preparation ────────────────────────────────────────────
 
     def _prepare_inputs(
         self,
+        pages: List[PageData],
         chunks: List[TextChunk],
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Tokenize chunks and prepare batched tensors.
-
-        Returns (input_ids, attention_mask) with shape (1, num_chunks, max_tokens).
-        """
-        max_len = self.chunk_cfg.max_tokens
-        num_chunks = len(chunks)
-
-        all_ids = torch.zeros(num_chunks, max_len, dtype=torch.long)
-        all_mask = torch.zeros(num_chunks, max_len, dtype=torch.long)
-
-        for i, chunk in enumerate(chunks):
-            encoded = self.tokenizer(
-                chunk.text,
-                max_length=max_len,
-                padding="max_length",
-                truncation=True,
-                return_tensors="pt",
-            )
-            all_ids[i] = encoded["input_ids"].squeeze(0)
-            all_mask[i] = encoded["attention_mask"].squeeze(0)
-
-        # Add batch dimension: (1, num_chunks, max_tokens)
-        return (
-            all_ids.unsqueeze(0).to(self.device),
-            all_mask.unsqueeze(0).to(self.device),
+    ) -> Dict[str, torch.Tensor]:
+        records = build_inference_chunks(
+            pages,
+            chunks,
+            self.tokenizer,
+            chunk_config=self.chunk_cfg,
         )
-
-    # ── NER decoding ─────────────────────────────────────────────────
+        fields = (
+            "input_ids",
+            "attention_mask",
+            "page_ids",
+            "section_ids",
+            "bboxes",
+            "sentence_ids",
+            "token_offsets",
+        )
+        return {
+            name: torch.tensor([record[name] for record in records], dtype=torch.long)
+            .unsqueeze(0)
+            .to(self.device)
+            for name in fields
+        }
 
     def _decode_ner(
         self,
         ner_logits: torch.Tensor,
-        attention_mask: torch.Tensor,
-        chunks: List[TextChunk],
+        features: Dict[str, torch.Tensor],
     ) -> List[Entity]:
-        """Decode NER logits into Entity objects.
-
-        Parameters
-        ----------
-        ner_logits : (1, num_chunks, seq_len, num_tags)
-        attention_mask : (1, num_chunks, seq_len)
-        chunks : list of TextChunk
-        """
-        # Remove batch dim
-        logits = ner_logits[0]       # (num_chunks, seq_len, num_tags)
-        mask = attention_mask[0]     # (num_chunks, seq_len)
-
-        predictions = logits.argmax(dim=-1)  # (num_chunks, seq_len)
+        logits = ner_logits[0]
+        predictions = logits.argmax(dim=-1)
         confidences = torch.softmax(logits, dim=-1).max(dim=-1).values
-
+        attention_mask = features["attention_mask"][0]
         entities: List[Entity] = []
 
-        for chunk_idx in range(len(chunks)):
-            chunk = chunks[chunk_idx]
-            pred = predictions[chunk_idx].cpu().tolist()
-            conf = confidences[chunk_idx].cpu().tolist()
-            chunk_mask = mask[chunk_idx].cpu().tolist()
+        for chunk_index in range(logits.shape[0]):
+            tags = predictions[chunk_index].detach().cpu().tolist()
+            confidence = confidences[chunk_index].detach().cpu().tolist()
+            mask = attention_mask[chunk_index].detach().cpu().tolist()
+            current: Dict[str, Any] | None = None
 
-            # Decode BIO tags into entity spans
-            current_entity: dict | None = None
+            def close_current() -> None:
+                nonlocal current
+                if current is None:
+                    return
+                entities.append(self._build_entity(current, chunk_index, features))
+                current = None
 
-            for tok_idx in range(len(pred)):
-                if chunk_mask[tok_idx] == 0:
-                    # Padding — close any open entity
-                    if current_entity is not None:
-                        entities.append(self._build_entity(current_entity, chunk))
-                        current_entity = None
+            for token_index, tag_id in enumerate(tags):
+                if not mask[token_index]:
+                    close_current()
                     continue
-
-                tag = self.id2tag.get(pred[tok_idx], "O")
-
+                tag = self.id2tag.get(tag_id, "O")
                 if tag.startswith("B-"):
-                    # Close previous entity if open
-                    if current_entity is not None:
-                        entities.append(self._build_entity(current_entity, chunk))
-                    # Start new entity
-                    current_entity = {
+                    close_current()
+                    current = {
                         "type": tag[2:],
-                        "chunk_id": chunk_idx,
-                        "start": tok_idx,
-                        "end": tok_idx + 1,
-                        "confidences": [conf[tok_idx]],
+                        "start": token_index,
+                        "end": token_index + 1,
+                        "confidences": [confidence[token_index]],
                     }
-                elif tag.startswith("I-") and current_entity is not None:
-                    # Continue entity if types match
-                    if tag[2:] == current_entity["type"]:
-                        current_entity["end"] = tok_idx + 1
-                        current_entity["confidences"].append(conf[tok_idx])
+                elif tag.startswith("I-"):
+                    entity_type = tag[2:]
+                    if current is None or current["type"] != entity_type:
+                        close_current()
+                        current = {
+                            "type": entity_type,
+                            "start": token_index,
+                            "end": token_index + 1,
+                            "confidences": [confidence[token_index]],
+                        }
                     else:
-                        entities.append(self._build_entity(current_entity, chunk))
-                        current_entity = None
+                        current["end"] = token_index + 1
+                        current["confidences"].append(confidence[token_index])
                 else:
-                    # O tag — close any open entity
-                    if current_entity is not None:
-                        entities.append(self._build_entity(current_entity, chunk))
-                        current_entity = None
+                    close_current()
+            close_current()
 
-            # Close entity at chunk boundary
-            if current_entity is not None:
-                entities.append(self._build_entity(current_entity, chunk))
+        unique: Dict[Tuple[str, int, int, str], Entity] = {}
+        for entity in entities:
+            key = (entity.entity_type, entity.char_start, entity.char_end, entity.text)
+            if key not in unique or entity.confidence > unique[key].confidence:
+                unique[key] = entity
+        return sorted(unique.values(), key=lambda item: (item.char_start, item.char_end))
 
-        return entities
-
-    def _build_entity(self, ent_dict: dict, chunk: TextChunk) -> Entity:
-        """Convert a raw entity dict into an Entity dataclass."""
-        # Decode the token span back to text
-        token_ids = chunk.token_ids[ent_dict["start"]:ent_dict["end"]]
+    def _build_entity(
+        self,
+        raw: Dict[str, Any],
+        chunk_index: int,
+        features: Dict[str, torch.Tensor],
+    ) -> Entity:
+        start, end = raw["start"], raw["end"]
+        token_ids = features["input_ids"][0, chunk_index, start:end].detach().cpu().tolist()
         text = self.tokenizer.decode(token_ids, skip_special_tokens=True).strip()
-
+        offsets = (
+            features["token_offsets"][0, chunk_index, start:end].detach().cpu().tolist()
+        )
+        valid_offsets = [pair for pair in offsets if pair[0] >= 0]
+        pages = sorted(
+            {
+                int(value)
+                for value in features["page_ids"][0, chunk_index, start:end]
+                .detach()
+                .cpu()
+                .tolist()
+                if value > 0
+            }
+        )
+        sentences = [
+            int(value)
+            for value in features["sentence_ids"][0, chunk_index, start:end]
+            .detach()
+            .cpu()
+            .tolist()
+            if value >= 0
+        ]
         return Entity(
             text=text,
-            entity_type=ent_dict["type"],
-            chunk_id=ent_dict["chunk_id"],
-            token_start=ent_dict["start"],
-            token_end=ent_dict["end"],
-            page_numbers=chunk.page_numbers,
-            confidence=sum(ent_dict["confidences"]) / len(ent_dict["confidences"]),
+            entity_type=raw["type"],
+            chunk_id=chunk_index,
+            token_start=start,
+            token_end=end,
+            page_numbers=pages,
+            sentence_id=sentences[0] if sentences else -1,
+            char_start=min(pair[0] for pair in valid_offsets) if valid_offsets else -1,
+            char_end=max(pair[1] for pair in valid_offsets) if valid_offsets else -1,
+            confidence=sum(raw["confidences"]) / len(raw["confidences"]),
         )
 
-    # ── Violation decoding ───────────────────────────────────────────
-
-    def _decode_violation(
-        self,
-        cls_logits: torch.Tensor,
-    ) -> Dict[str, Any]:
-        """Decode violation classification logits."""
-        probs = torch.softmax(cls_logits[0], dim=-1)  # (num_classes,)
-        pred_idx = probs.argmax().item()
-        pred_label = self.id2violation.get(pred_idx, f"unknown_{pred_idx}")
-        pred_conf = probs[pred_idx].item()
-
-        all_scores = {
-            self.id2violation.get(i, f"class_{i}"): round(p.item(), 4)
-            for i, p in enumerate(probs)
-        }
-
+    def _decode_finding(self, logits: torch.Tensor) -> Dict[str, Any]:
+        probabilities = torch.softmax(logits[0], dim=-1)
+        index = int(probabilities.argmax().item())
         return {
-            "label": pred_label,
-            "confidence": round(pred_conf, 4),
-            "all_scores": all_scores,
+            "predicted_type": self.id2finding.get(index, f"unknown_{index}"),
+            "confidence": round(float(probabilities[index].item()), 4),
+            "all_scores": {
+                self.id2finding.get(i, f"class_{i}"): round(float(value.item()), 4)
+                for i, value in enumerate(probabilities)
+            },
         }
-
-    # ── Relation prediction ──────────────────────────────────────────
 
     def _predict_relations(
         self,
         entities: List[Entity],
-        input_ids: torch.Tensor,
-        attention_mask: torch.Tensor,
-        chunks: List[TextChunk],
+        features: Dict[str, torch.Tensor],
     ) -> List[Relation]:
-        """Score all valid entity pairs for relations.
-
-        Entity pairs are only considered if they appear within the same
-        chunk or in chunks that are within ``sentence_window`` of each
-        other.
-        """
         if len(entities) < 2:
             return []
-
-        # Build candidate pairs (within proximity constraint)
-        pairs: List[Tuple[int, int]] = []
-        for i in range(len(entities)):
-            for j in range(len(entities)):
-                if i == j:
+        candidate_pairs = []
+        for head_index, head in enumerate(entities):
+            for tail_index, tail in enumerate(entities):
+                if head_index == tail_index:
                     continue
-                # Check proximity: chunks within a window
-                ci = entities[i].chunk_id
-                cj = entities[j].chunk_id
-                if abs(ci - cj) <= 2:  # chunks close enough
-                    pairs.append((i, j))
-
-        if not pairs:
+                if head.sentence_id >= 0 and tail.sentence_id >= 0:
+                    if abs(head.sentence_id - tail.sentence_id) > RELATION_CFG.sentence_window:
+                        continue
+                candidate_pairs.append((head_index, tail_index))
+        if not candidate_pairs:
             return []
 
-        # Get token embeddings for entity spans
-        # Re-encode is expensive; instead, use the cached forward pass
-        # We run a lightweight forward through just the encoder for span extraction
-        flat_ids = input_ids.view(-1, input_ids.shape[-1])
-        flat_mask = attention_mask.view(-1, attention_mask.shape[-1])
+        input_ids = features["input_ids"]
+        attention_mask = features["attention_mask"]
+        sequence_length = input_ids.shape[-1]
+        flat_ids = input_ids.view(-1, sequence_length)
+        flat_mask = attention_mask.view(-1, sequence_length)
+        if getattr(self.model.config, "encoder_uses_2d_positions", False):
+            token_embeddings, _ = self.model.encoder(
+                flat_ids,
+                flat_mask,
+                bboxes=features["bboxes"].view(-1, sequence_length, 4),
+            )
+        else:
+            token_embeddings, _ = self.model.encoder(flat_ids, flat_mask)
+        if getattr(self.model.config, "use_layout", False):
+            token_embeddings = self.model.layout_encoder(
+                token_embeddings,
+                page_ids=features["page_ids"].view(-1, sequence_length),
+                section_ids=features["section_ids"].view(-1, sequence_length),
+                bboxes=features["bboxes"].view(-1, sequence_length, 4),
+            )
 
-        token_embs, _ = self.model.encoder(flat_ids, flat_mask)
-        # token_embs: (num_chunks, seq_len, hidden)
+        head_vectors = []
+        tail_vectors = []
+        for head_index, tail_index in candidate_pairs:
+            head = entities[head_index]
+            tail = entities[tail_index]
+            head_vectors.append(
+                token_embeddings[
+                    head.chunk_id, head.token_start:head.token_end
+                ].mean(dim=0)
+            )
+            tail_vectors.append(
+                token_embeddings[
+                    tail.chunk_id, tail.token_start:tail.token_end
+                ].mean(dim=0)
+            )
+        probabilities = torch.softmax(
+            self.model.relation_extractor(
+                torch.stack(head_vectors), torch.stack(tail_vectors)
+            ),
+            dim=-1,
+        )
 
-        head_vecs = []
-        tail_vecs = []
-        pair_indices = []
-
-        for (hi, ti) in pairs:
-            h_ent = entities[hi]
-            t_ent = entities[ti]
-
-            h_emb = token_embs[h_ent.chunk_id, h_ent.token_start:h_ent.token_end].mean(dim=0)
-            t_emb = token_embs[t_ent.chunk_id, t_ent.token_start:t_ent.token_end].mean(dim=0)
-
-            head_vecs.append(h_emb)
-            tail_vecs.append(t_emb)
-            pair_indices.append((hi, ti))
-
-        head_tensor = torch.stack(head_vecs)
-        tail_tensor = torch.stack(tail_vecs)
-
-        rel_logits = self.model.relation_extractor(head_tensor, tail_tensor)
-        rel_probs = torch.softmax(rel_logits, dim=-1)  # (num_pairs, num_relations)
-
-        relations: List[Relation] = []
-        for k, (hi, ti) in enumerate(pair_indices):
-            pred_idx = rel_probs[k].argmax().item()
-            pred_conf = rel_probs[k, pred_idx].item()
-            rel_type = self.id2relation.get(pred_idx, "UNKNOWN")
-
-            if rel_type != "NO_RELATION" and pred_conf > 0.3:
-                relations.append(Relation(
-                    head_entity=entities[hi],
-                    tail_entity=entities[ti],
-                    relation_type=rel_type,
-                    confidence=round(pred_conf, 4),
-                ))
-
+        relations = []
+        for row, (head_index, tail_index) in enumerate(candidate_pairs):
+            relation_index = int(probabilities[row].argmax().item())
+            confidence = float(probabilities[row, relation_index].item())
+            relation_type = self.id2relation.get(relation_index, "UNKNOWN")
+            if relation_type == "NO_RELATION" or confidence < self.relation_threshold:
+                continue
+            relations.append(
+                Relation(
+                    entities[head_index],
+                    entities[tail_index],
+                    relation_type,
+                    round(confidence, 4),
+                )
+            )
         return relations
-
-    # ── Serialisation helpers ────────────────────────────────────────
 
     @staticmethod
     def _entity_to_dict(entity: Entity) -> Dict[str, Any]:
@@ -472,30 +391,30 @@ class InferencePipeline:
             "type": entity.entity_type,
             "chunk_id": entity.chunk_id,
             "token_span": [entity.token_start, entity.token_end],
+            "character_span": [entity.char_start, entity.char_end],
             "page_numbers": entity.page_numbers,
+            "sentence_id": entity.sentence_id,
             "confidence": round(entity.confidence, 4),
         }
 
     @staticmethod
     def _relation_to_dict(relation: Relation) -> Dict[str, Any]:
+        evidence_pages = sorted(
+            set(relation.head_entity.page_numbers) | set(relation.tail_entity.page_numbers)
+        )
         return {
-            "head": {
-                "text": relation.head_entity.text,
-                "type": relation.head_entity.entity_type,
-            },
-            "tail": {
-                "text": relation.tail_entity.text,
-                "type": relation.tail_entity.entity_type,
-            },
+            "head": InferencePipeline._entity_to_dict(relation.head_entity),
+            "tail": InferencePipeline._entity_to_dict(relation.tail_entity),
             "relation": relation.relation_type,
             "confidence": round(relation.confidence, 4),
+            "evidence_page_numbers": evidence_pages,
         }
 
     @staticmethod
     def _empty_result(pdf_path: Path) -> Dict[str, Any]:
         return {
             "document": {"filename": pdf_path.name, "total_pages": 0, "total_chunks": 0},
-            "violation": {"predicted_type": None, "confidence": 0.0, "all_scores": {}},
+            "finding": {"predicted_type": None, "confidence": 0.0, "all_scores": {}},
             "entities": [],
             "relationships": [],
         }

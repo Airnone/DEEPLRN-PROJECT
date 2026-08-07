@@ -1,13 +1,13 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta:__legacy__"
 
 [project]
 name = "deeplrn"
 version = "0.1.0"
-description = "Document-level NLP pipeline for extracting financial violation details from Philippine COA audit reports."
+description = "Evidence-linked document NLP for extracting neutral audit findings from Philippine COA reports."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "DEEPLRN Team"},
@@ -20,6 +20,8 @@ dependencies = [
     "transformers>=4.35.0",
     "torch>=2.0.0",
     "tqdm>=4.65.0",
+    "scikit-learn>=1.3.0",
+    "joblib>=1.3.0",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +32,11 @@ dev = [
 
 [project.scripts]
 deeplrn-preprocess = "deeplrn.cli:main"
+deeplrn-prepare = "deeplrn.workflows:prepare_main"
+deeplrn-split = "deeplrn.splitting:main"
+deeplrn-train = "deeplrn.workflows:train_main"
+deeplrn-infer = "deeplrn.workflows:infer_main"
+deeplrn-experiments = "deeplrn.experiments:experiments_main"
 
 [tool.setuptools.packages.find]
 include = ["deeplrn*"]

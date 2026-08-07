@@ -1,191 +1,188 @@
-# DEEPLRN — Document-Level NLP for Philippine COA Audit Reports
+# DEEPLRN
 
-A multi-task NLP pipeline that extracts financial violation details—entities, violation types, and relationships—from long, unstructured Philippine Commission on Audit (COA) PDF reports.
+DEEPLRN is an evidence-linked, document-level NLP system for Philippine
+Commission on Audit reports. It extracts neutral audit findings, entities,
+amounts, projects, and textual relationships. Its output is a review aid, not a
+determination of misconduct, intent, liability, or guilt.
 
-## Architecture Overview
+The repository is **software-complete and training-ready**. It does not contain
+the proposed COA corpus, human labels, trained research checkpoint, or measured
+held-out results. Those data-dependent deliverables must not be inferred from
+the passing software tests. See [DEVELOPMENT.md](DEVELOPMENT.md) for the design
+rationale and verification record.
 
-```
-PDF Report
-    │
-    ▼
-┌─────────────────────────────┐
-│  PDF Extractor              │  pdfplumber + Tesseract OCR fallback
-│  (page text, bounding boxes,│
-│   headers)                  │
-└──────────────┬──────────────┘
-               │
-               ▼
-┌─────────────────────────────┐
-│  Document Chunker           │  384-token windows, 64-token overlap
-│  (sentence-boundary aware)  │  RoBERTa BPE tokenisation
-└──────────────┬──────────────┘
-               │
-               ▼
-┌─────────────────────────────┐
-│  RoBERTa Encoder            │  Per-chunk contextual embeddings
-│  + Document Transformer     │  Cross-chunk attention (2 layers)
-└──────────────┬──────────────┘
-               │
-       ┌───────┼───────┐
-       ▼       ▼       ▼
-   ┌──────┐ ┌──────┐ ┌──────────┐
-   │ NER  │ │Class.│ │ Relation │   Multi-task heads
-   │ Head │ │ Head │ │ Extract. │   (trained jointly)
-   └──┬───┘ └──┬───┘ └────┬─────┘
-      │        │           │
-      ▼        ▼           ▼
-   Entities  Violation   Entity
-             Category    Links
-               │
-               ▼
-        JSON Output
+## Model and data flow
+
+1. `pdfplumber` extracts page text, headers, word boxes, and page dimensions;
+   sparse pages can use Tesseract OCR.
+2. A fast Hugging Face tokenizer creates sentence-aware overlapping chunks and
+   retains global character offsets.
+3. Page, section, and normalized two-dimensional box embeddings are fused with
+   encoder token states. Each layout source can be disabled.
+4. A two-layer document Transformer shares information between chunk states.
+5. Joint heads predict exact-span BIO entities, one neutral finding category,
+   and typed entity relations including `NO_RELATION` negatives.
+6. Inference JSON links predictions to character spans, sentences, and source
+   pages.
+
+The canonical entity type is `FINDING`, the fifth finding class is
+`contractor_related_concern`, and the neutral relation is `ASSOCIATED_WITH`.
+Legacy prototype labels are accepted only at schema-conversion boundaries.
+
+## Installation
+
+Python 3.10 or newer is required.
+
+```powershell
+python -m pip install -e ".[dev]"
 ```
 
-## Quick Start
+Tesseract must also be installed on the operating system if OCR fallback is
+enabled. Model/tokenizer weights are downloaded from Hugging Face the first
+time a preset is used.
 
-### 1. Install dependencies
+## End-to-end workflow
 
-```bash
-pip install pdfplumber pytesseract Pillow transformers torch tqdm
-```
+### 1. Create annotations
 
-> **Note:** For OCR fallback you also need the [Tesseract binary](https://github.com/tesseract-ocr/tesseract) installed on your system.
-
-### 2. Preprocess PDFs
-
-```bash
-# Single PDF
-python -m deeplrn --input report.pdf --output output/
-
-# Directory of PDFs
-python -m deeplrn --input pdfs/ --output output/
-```
-
-### 3. Train the model
-
-```python
-from deeplrn.model import DeepLRNModel, ModelConfig
-from deeplrn.training import DeepLRNDataset, Trainer, TrainingConfig, create_dummy_dataset
-
-# Generate dummy data for testing
-create_dummy_dataset("data/train", num_docs=20)
-create_dummy_dataset("data/eval", num_docs=5)
-
-# Load data
-train_ds = DeepLRNDataset("data/train")
-eval_ds = DeepLRNDataset("data/eval")
-
-# Create model
-model = DeepLRNModel(ModelConfig(freeze_layers=6))
-
-# Train
-trainer = Trainer(model, train_ds, eval_ds, TrainingConfig(num_epochs=5))
-trainer.train()
-```
-
-### 4. Run inference
-
-```python
-from deeplrn.pipeline import InferencePipeline
-
-pipe = InferencePipeline.from_checkpoint("checkpoints/best_model.pt")
-result = pipe.run("report.pdf")
-print(result["violation"])      # {'type': 'procurement_irregularity', 'confidence': 0.92}
-print(result["entities"][:3])   # [{'text': 'ABC Construction', 'type': 'CONTRACTOR'}, ...]
-print(result["relationships"])  # [{'head': ..., 'tail': ..., 'relation': 'RESPONSIBLE_FOR'}]
-```
-
-### 5. JSON Output Format
+Offsets use the exact document text obtained by joining extracted pages with a
+newline. They are zero-based, half-open character spans.
 
 ```json
 {
-  "document": {
-    "filename": "report.pdf",
-    "total_pages": 45,
-    "total_chunks": 128,
-    "inference_time_s": 12.3
-  },
-  "violation": {
-    "predicted_type": "procurement_irregularity",
-    "confidence": 0.92,
-    "all_scores": { ... }
-  },
+  "schema_version": 1,
+  "doc_id": "sample-lgu-2024",
+  "source_pdf": "pdfs/sample.pdf",
+  "lgu": "Sample LGU",
+  "year": 2024,
+  "finding_label": "procurement_irregularity",
   "entities": [
-    {"text": "ABC Construction", "type": "CONTRACTOR", "confidence": 0.95, ...},
-    {"text": "PHP 2,500,000", "type": "AMOUNT", "confidence": 0.98, ...}
+    {
+      "entity_id": "e1",
+      "label": "CONTRACTOR",
+      "start_char": 120,
+      "end_char": 136,
+      "text": "Example Builders",
+      "page_number": 3
+    }
   ],
-  "relationships": [
-    {"head": {"text": "ABC Construction"}, "tail": {"text": "procurement irregularity"},
-     "relation": "INVOLVES", "confidence": 0.87}
-  ]
+  "relations": []
 }
 ```
 
-## Project Structure
+The complete validator is in `deeplrn/schema.py`. Preparing supervised labels
+is not the same as conducting a human-review or usability study; this project
+does not implement such a study. If no reliable labeled data can be produced,
+the software can still run but defensible model-quality claims cannot be made.
 
-```
-DEEPLRN-PROJECT/
-├── deeplrn/
-│   ├── __init__.py
-│   ├── __main__.py
-│   ├── cli.py                          # CLI for preprocessing
-│   ├── config.py                       # Central configuration
-│   ├── pipeline.py                     # End-to-end inference
-│   ├── preprocessing/
-│   │   ├── __init__.py
-│   │   ├── pdf_extractor.py            # PDF text extraction + OCR
-│   │   └── chunker.py                  # Overlapping-window chunking
-│   ├── model/
-│   │   ├── __init__.py
-│   │   ├── encoder.py                  # RoBERTa chunk encoder
-│   │   ├── doc_transformer.py          # 2-layer document Transformer
-│   │   ├── deeplrn_model.py            # Unified multi-task model
-│   │   └── heads/
-│   │       ├── __init__.py
-│   │       ├── ner.py                  # NER sequence labeling
-│   │       ├── classifier.py           # Violation classification
-│   │       └── relation.py             # Relation extraction (bilinear)
-│   └── training/
-│       ├── __init__.py
-│       ├── dataset.py                  # PyTorch dataset + collation
-│       └── trainer.py                  # Multi-task training loop
-├── tests/
-│   ├── test_chunker.py
-│   └── test_integration.py
-├── pyproject.toml
-└── README.md
+### 2. Prepare model records
+
+```powershell
+deeplrn-prepare --annotations annotations --pdf-root . --output records --preset deeplrn
 ```
 
-## Pipeline Stages
+This performs PDF extraction and deterministic character-to-token alignment.
+Each record contains token IDs, BIO labels, finding labels, positive and
+negative relation candidates, page/section/box features, sentence IDs, and
+global evidence offsets.
 
-| Stage | Status | Module |
-|-------|--------|--------|
-| PDF Extraction + OCR | ✅ Done | `preprocessing.pdf_extractor` |
-| Token Chunking (384/64) | ✅ Done | `preprocessing.chunker` |
-| RoBERTa Chunk Encoder | ✅ Done | `model.encoder` |
-| Document Transformer (2-layer) | ✅ Done | `model.doc_transformer` |
-| NER Head (17 BIO tags) | ✅ Done | `model.heads.ner` |
-| Violation Classifier (5 classes) | ✅ Done | `model.heads.classifier` |
-| Relation Extractor (bilinear) | ✅ Done | `model.heads.relation` |
-| Unified Multi-Task Model | ✅ Done | `model.deeplrn_model` |
-| Training Loop (AdamW + warmup) | ✅ Done | `training.trainer` |
-| Dataset + Collation | ✅ Done | `training.dataset` |
-| Inference Pipeline (PDF → JSON) | ✅ Done | `pipeline` |
+### 3. Make leakage-resistant splits
 
-## NER Tag Schema
+```powershell
+deeplrn-split --records records --output manifests/split.json --seed 13
+```
 
-`PERSON`, `ORGANIZATION`, `LGU`, `CONTRACTOR`, `AMOUNT`, `DATE`, `PROJECT`, `VIOLATION` — using BIO encoding (17 tags).
+Every year from one LGU remains in one partition. MinHash candidate search plus
+exact shingle Jaccard confirmation also prevents near-duplicate reports from
+crossing partitions.
 
-## Violation Categories
+### 4. Train and evaluate
 
-1. Unauthorized Expenditure
-2. Unliquidated Cash Advance
-3. Procurement Irregularity
-4. Unsupported Disbursement
-5. Suspicious Contractor Activity
+```powershell
+deeplrn-train --manifest manifests/split.json --output checkpoints --epochs 10 --seed 42
+```
 
-## Relation Types
+Training saves `best.pt`, periodic checkpoints, and `final.pt`. A checkpoint
+contains its label order, model and training configurations, optimizer and
+scheduler state, completed epochs, global step, and metrics. Resume with:
 
-- `INVOLVES` — links a violation to an entity
-- `AMOUNT_OF` — links a monetary amount to a violation
-- `RESPONSIBLE_FOR` — links a person/org to a violation
+```powershell
+deeplrn-train --manifest manifests/split.json --output checkpoints --resume checkpoints/final.pt
+```
+
+Evaluate without training:
+
+```powershell
+deeplrn-train --manifest manifests/split.json --output checkpoints --resume checkpoints/best.pt --eval-only
+```
+
+Reported measures are exact entity-span precision/recall/F1, finding accuracy
+and macro F1, finding Brier score and expected calibration error, positive-only
+relation F1, and evidence-aware tuple F1. `NO_RELATION` true negatives do not
+inflate relation F1.
+
+### 5. Run evidence-linked inference
+
+```powershell
+deeplrn-infer --checkpoint checkpoints/best.pt --input report.pdf --output result.json
+```
+
+The output uses a neutral `finding` object and includes entity character spans,
+page numbers, sentence IDs, confidence scores, typed relationships, and their
+combined evidence pages.
+
+## Baselines and ablations
+
+List the reproducible neural presets:
+
+```powershell
+deeplrn-experiments list
+```
+
+The presets are `deeplrn`, `sentence_roberta`, `longformer`, and `layoutlmv3`.
+Each requires records prepared with that preset because token IDs are not
+interchangeable between encoder families.
+
+Train the proposal's TF-IDF plus linear-SVM finding baseline:
+
+```powershell
+deeplrn-experiments tfidf-svm --manifest manifests/split.json --output baselines/tfidf-svm.joblib
+```
+
+Examples of controlled ablations:
+
+```powershell
+# Remove all layout features
+deeplrn-train --manifest manifests/split.json --text-only
+
+# Remove only box positions or cross-chunk attention
+deeplrn-train --manifest manifests/split.json --no-bbox
+deeplrn-train --manifest manifests/split.json --no-document-context
+
+# Remove an auxiliary task from the joint objective
+deeplrn-train --manifest manifests/split.json --relation-loss-weight 0
+```
+
+`deeplrn/statistics.py` provides seeded LGU-cluster bootstrap intervals, paired
+cluster permutation tests, and Holm multiple-comparison correction. These
+utilities require actual per-LGU test counts; the repository does not fabricate
+research results.
+
+## Verification
+
+```powershell
+python -m pytest -q
+```
+
+Tests are offline and cover extraction helpers, chunking, schemas, annotation
+alignment, leakage controls, layout fusion and ablations, metrics, statistical
+tests, baselines, manifest selection, checkpoint contracts, and an end-to-end
+one-epoch training/resume path.
+
+## Current boundary
+
+The implementation can now prepare, split, train, evaluate, compare, resume,
+and infer. To finish the research rather than the software, the project still
+needs legally usable COA source documents, a reliable labeled corpus, fixed-seed
+training runs for every comparison, and held-out-LGU reporting. No accuracy,
+F1, confidence interval, or superiority claim is currently supported.

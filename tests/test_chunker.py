@@ -34,6 +34,18 @@ SAMPLE_TEXT = (
 )
 
 
+class DeterministicTokenizer:
+    """Small local tokenizer used to keep unit tests offline and repeatable."""
+
+    def encode(self, text, add_special_tokens=True, max_length=None, truncation=False):
+        tokens = [abs(hash(word)) % 10000 + 3 for word in text.split()]
+        if add_special_tokens:
+            tokens = [1] + tokens + [2]
+        if max_length is not None and truncation:
+            tokens = tokens[:max_length]
+        return tokens
+
+
 def make_pages(text: str, pages_count: int = 1) -> list[PageData]:
     """Create synthetic PageData objects from a text string."""
     chunk_size = len(text) // pages_count
@@ -54,9 +66,16 @@ class TestDocumentChunker:
     """Tests for DocumentChunker."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self):
+    def _setup(self, monkeypatch):
         """Import chunker here so we can patch the tokenizer download if needed."""
-        from deeplrn.preprocessing.chunker import DocumentChunker
+        from deeplrn.preprocessing import chunker as chunker_module
+
+        monkeypatch.setattr(
+            chunker_module.AutoTokenizer,
+            "from_pretrained",
+            lambda *args, **kwargs: DeterministicTokenizer(),
+        )
+        DocumentChunker = chunker_module.DocumentChunker
         self.DocumentChunker = DocumentChunker
 
     def test_empty_pages_returns_empty(self):
@@ -74,6 +93,23 @@ class TestDocumentChunker:
         for chunk in chunks:
             assert chunk.token_count > 0
             assert chunk.token_count <= 384 - 2  # budget = max_tokens - 2 special tokens
+
+    def test_single_sentence_mode_emits_one_sentence_per_chunk(self):
+        pages = make_pages("First sentence. Second sentence. Third sentence.")
+        chunker = self.DocumentChunker(
+            ChunkConfig(
+                max_tokens=32,
+                overlap_tokens=0,
+                tokenizer_name="offline",
+                single_sentence_chunks=True,
+            )
+        )
+        chunks = chunker.chunk_pages(pages)
+        assert [chunk.text for chunk in chunks] == [
+            "First sentence.",
+            "Second sentence.",
+            "Third sentence.",
+        ]
 
     def test_chunk_ids_are_sequential(self):
         pages = make_pages(SAMPLE_TEXT)
@@ -115,8 +151,11 @@ class TestDocumentChunker:
 
         if len(chunks) >= 2:
             # The second chunk should contain some text from the end of the first
-            first_words = set(chunks[0].text.split()[-10:])
-            second_words = set(chunks[1].text.split()[:10])
+            # Sentence-aware overlap may repeat a sentence longer than ten
+            # words, so compare a window at least as large as the configured
+            # overlap budget.
+            first_words = set(chunks[0].text.split()[-30:])
+            second_words = set(chunks[1].text.split()[:30])
             overlap = first_words & second_words
             # There should be at least *some* overlap
             assert len(overlap) > 0, (

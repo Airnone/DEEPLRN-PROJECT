@@ -52,6 +52,24 @@ from deeplrn.preprocessing.pdf_extractor import PageData
 
 logger = logging.getLogger(__name__)
 
+
+def concatenate_pages(pages: List[PageData]) -> Tuple[str, List[Tuple[int, int, int]]]:
+    """Join page texts and return document-level page character spans."""
+    parts: List[str] = []
+    page_map: List[Tuple[int, int, int]] = []
+    offset = 0
+    for page in pages:
+        text = page.text.strip()
+        if not text:
+            continue
+        start = offset
+        parts.append(text)
+        offset += len(text)
+        parts.append("\n\n")
+        offset += 2
+        page_map.append((start, offset - 2, page.page_number))
+    return "".join(parts).rstrip("\n"), page_map
+
 # ── Simple sentence splitter ─────────────────────────────────────────────────
 # Handles common abbreviations in Philippine government reports.
 _ABBREVIATIONS = frozenset({
@@ -248,24 +266,7 @@ class DocumentChunker:
         page_map : list of (start_char, end_char, page_number)
             Character spans for each page inside *doc_text*.
         """
-        parts: List[str] = []
-        page_map: List[Tuple[int, int, int]] = []
-        offset = 0
-
-        for page in pages:
-            text = page.text.strip()
-            if not text:
-                continue
-            start = offset
-            parts.append(text)
-            offset += len(text)
-            # Add separator
-            parts.append("\n\n")
-            offset += 2
-            page_map.append((start, offset - 2, page.page_number))
-
-        doc_text = "".join(parts).rstrip("\n")
-        return doc_text, page_map
+        return concatenate_pages(pages)
 
     def _greedy_chunk(
         self,
@@ -306,6 +307,8 @@ class DocumentChunker:
                 collected_sents.append(sent_idx)
                 running_tokens += cost
                 sent_idx += 1
+                if self.cfg.single_sentence_chunks:
+                    break
 
             if not collected_sents:
                 break
@@ -322,6 +325,16 @@ class DocumentChunker:
             # Character offsets — use pre-computed sentence positions
             char_start = sent_char_offsets[collected_sents[0]][0]
             char_end = sent_char_offsets[collected_sents[-1]][1]
+
+            # Preserve the exact source substring so tokenizer offsets and
+            # annotation offsets share the same coordinate system.
+            chunk_text = doc_text[char_start:char_end]
+            chunk_token_ids = self.tokenizer.encode(
+                chunk_text,
+                add_special_tokens=True,
+                max_length=self.cfg.max_tokens,
+                truncation=True,
+            )
 
             # Page provenance
             pages_here = sorted({

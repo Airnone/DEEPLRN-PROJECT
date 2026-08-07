@@ -20,7 +20,12 @@ class ChunkEncoder(nn.Module):
                 for param in self.roberta.encoder.layer[i].parameters():
                     param.requires_grad = False
 
-    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor):
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        bboxes: torch.Tensor | None = None,
+    ):
         """
         Forward pass for the ChunkEncoder.
         
@@ -32,10 +37,14 @@ class ChunkEncoder(nn.Module):
             token_embeddings: (batch, seq_len, hidden_size) — all token embeddings
             cls_embedding: (batch, hidden_size) — the <s> token embedding
         """
-        outputs = self.roberta(
-            input_ids=input_ids,
-            attention_mask=attention_mask
-        )
+        inputs = {"input_ids": input_ids, "attention_mask": attention_mask}
+        if bboxes is not None:
+            inputs["bbox"] = bboxes
+        if getattr(self.roberta.config, "model_type", "") == "longformer":
+            global_attention_mask = torch.zeros_like(attention_mask)
+            global_attention_mask[:, 0] = 1
+            inputs["global_attention_mask"] = global_attention_mask
+        outputs = self.roberta(**inputs)
         
         token_embeddings = outputs.last_hidden_state
         cls_embedding = token_embeddings[:, 0, :]
