@@ -33,7 +33,7 @@ Legacy prototype labels are accepted only at schema-conversion boundaries.
 
 Python 3.10 or newer is required.
 
-```powershell
+```bash
 python -m pip install -e ".[dev]"
 ```
 
@@ -77,7 +77,7 @@ the software can still run but defensible model-quality claims cannot be made.
 
 ### 2. Prepare model records
 
-```powershell
+```bash
 deeplrn-prepare --annotations annotations --pdf-root . --output records --preset deeplrn
 ```
 
@@ -88,7 +88,7 @@ global evidence offsets.
 
 ### 3. Make leakage-resistant splits
 
-```powershell
+```bash
 deeplrn-split --records records --output manifests/split.json --seed 13
 ```
 
@@ -98,7 +98,7 @@ crossing partitions.
 
 ### 4. Train and evaluate
 
-```powershell
+```bash
 deeplrn-train --manifest manifests/split.json --output checkpoints --epochs 10 --seed 42
 ```
 
@@ -106,13 +106,13 @@ Training saves `best.pt`, periodic checkpoints, and `final.pt`. A checkpoint
 contains its label order, model and training configurations, optimizer and
 scheduler state, completed epochs, global step, and metrics. Resume with:
 
-```powershell
+```bash
 deeplrn-train --manifest manifests/split.json --output checkpoints --resume checkpoints/final.pt
 ```
 
 Evaluate without training:
 
-```powershell
+```bash
 deeplrn-train --manifest manifests/split.json --output checkpoints --resume checkpoints/best.pt --eval-only
 ```
 
@@ -123,7 +123,7 @@ inflate relation F1.
 
 ### 5. Run evidence-linked inference
 
-```powershell
+```bash
 deeplrn-infer --checkpoint checkpoints/best.pt --input report.pdf --output result.json
 ```
 
@@ -135,7 +135,7 @@ combined evidence pages.
 
 List the reproducible neural presets:
 
-```powershell
+```bash
 deeplrn-experiments list
 ```
 
@@ -145,13 +145,13 @@ interchangeable between encoder families.
 
 Train the proposal's TF-IDF plus linear-SVM finding baseline:
 
-```powershell
+```bash
 deeplrn-experiments tfidf-svm --manifest manifests/split.json --output baselines/tfidf-svm.joblib
 ```
 
 Examples of controlled ablations:
 
-```powershell
+```bash
 # Remove all layout features
 deeplrn-train --manifest manifests/split.json --text-only
 
@@ -170,7 +170,7 @@ research results.
 
 ## Verification
 
-```powershell
+```bash
 python -m pytest -q
 ```
 

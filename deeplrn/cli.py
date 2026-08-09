@@ -4,15 +4,21 @@ deeplrn.cli
 
 Command-line interface for the DEEPLRN preprocessing pipeline.
 
+Accepts ``.pdf`` and ``.docx`` source documents (see
+``deeplrn.preprocessing.extract`` for the format dispatch, and
+``deeplrn.preprocessing.docx_extractor`` for DOCX-specific caveats around
+page numbering).
+
 Usage::
 
-    # Process a single PDF
+    # Process a single PDF or DOCX
     python -m deeplrn.cli --input report.pdf --output output/
+    python -m deeplrn.cli --input report.docx --output output/
 
-    # Process an entire directory of PDFs
+    # Process an entire directory of PDFs/DOCX files (non-recursive)
     python -m deeplrn.cli --input pdfs/ --output output/
 
-    # Disable OCR fallback
+    # Disable OCR fallback (PDF only; DOCX has no OCR fallback)
     python -m deeplrn.cli --input report.pdf --output output/ --no-ocr
 """
 
@@ -26,7 +32,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
-from deeplrn.preprocessing.pdf_extractor import PDFExtractor, PageData
+from deeplrn.preprocessing.extract import SUPPORTED_SUFFIXES, extract_document
+from deeplrn.preprocessing.pdf_extractor import PageData
 from deeplrn.preprocessing.chunker import DocumentChunker, TextChunk
 from deeplrn.config import ExtractionConfig, ChunkConfig
 
@@ -72,25 +79,24 @@ def _serialize_chunks(chunks: List[TextChunk]) -> List[Dict[str, Any]]:
     ]
 
 
-def process_pdf(
-    pdf_path: Path,
+def process_document(
+    doc_path: Path,
     output_dir: Path,
     extract_cfg: ExtractionConfig,
     chunk_cfg: ChunkConfig,
 ) -> Dict[str, Any]:
-    """Run the full preprocessing pipeline on a single PDF.
+    """Run the full preprocessing pipeline on a single PDF or DOCX file.
 
     Returns the result dict (also written to disk as JSON).
     """
     logger.info("=" * 60)
-    logger.info("Processing: %s", pdf_path.name)
+    logger.info("Processing: %s", doc_path.name)
     logger.info("=" * 60)
 
     t0 = time.perf_counter()
 
     # ── 1. Extract ───────────────────────────────────────────────────
-    extractor = PDFExtractor(pdf_path, config=extract_cfg)
-    pages = extractor.extract()
+    pages = extract_document(doc_path, extract_cfg)
 
     t_extract = time.perf_counter() - t0
 
@@ -103,7 +109,7 @@ def process_pdf(
     # ── 3. Build result ──────────────────────────────────────────────
     result: Dict[str, Any] = {
         "document": {
-            "filename": pdf_path.name,
+            "filename": doc_path.name,
             "total_pages": len(pages),
             "total_chunks": len(chunks),
             "ocr_pages": sum(1 for p in pages if p.source == "tesseract"),
@@ -116,7 +122,7 @@ def process_pdf(
 
     # ── 4. Write JSON ────────────────────────────────────────────────
     output_dir.mkdir(parents=True, exist_ok=True)
-    out_path = output_dir / f"{pdf_path.stem}_preprocessed.json"
+    out_path = output_dir / f"{doc_path.stem}_preprocessed.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
 
@@ -133,7 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--input", "-i",
         required=True,
-        help="Path to a single PDF or a directory of PDFs.",
+        help="Path to a single PDF/DOCX file, or a directory of them (non-recursive).",
     )
     parser.add_argument(
         "--output", "-o",
@@ -183,25 +189,33 @@ def main(argv: list[str] | None = None) -> None:
     extract_cfg = ExtractionConfig(ocr_fallback=not args.no_ocr)
     chunk_cfg = ChunkConfig(max_tokens=args.max_tokens, overlap_tokens=args.overlap)
 
-    # Collect PDF paths
+    # Collect PDF/DOCX paths (directory scan is non-recursive)
     if input_path.is_file():
-        pdfs = [input_path]
+        documents = [input_path]
     elif input_path.is_dir():
-        pdfs = sorted(input_path.glob("*.pdf"))
-        if not pdfs:
-            logger.error("No PDF files found in %s", input_path)
+        documents = sorted(
+            path
+            for suffix in SUPPORTED_SUFFIXES
+            for path in input_path.glob(f"*{suffix}")
+        )
+        if not documents:
+            logger.error(
+                "No %s files found in %s",
+                "/".join(SUPPORTED_SUFFIXES),
+                input_path,
+            )
             sys.exit(1)
     else:
         logger.error("Input path does not exist: %s", input_path)
         sys.exit(1)
 
-    logger.info("Found %d PDF(s) to process", len(pdfs))
+    logger.info("Found %d document(s) to process", len(documents))
 
-    for pdf in pdfs:
+    for doc in documents:
         try:
-            process_pdf(pdf, output_dir, extract_cfg, chunk_cfg)
+            process_document(doc, output_dir, extract_cfg, chunk_cfg)
         except Exception:
-            logger.exception("Failed to process %s", pdf.name)
+            logger.exception("Failed to process %s", doc.name)
 
     logger.info("Done — all results in %s/", output_dir)
 

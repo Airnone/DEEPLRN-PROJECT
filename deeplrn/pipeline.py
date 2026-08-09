@@ -23,7 +23,8 @@ from deeplrn.config import (
     ExtractionConfig,
 )
 from deeplrn.preprocessing.chunker import DocumentChunker, TextChunk
-from deeplrn.preprocessing.pdf_extractor import PDFExtractor, PageData
+from deeplrn.preprocessing.extract import extract_document
+from deeplrn.preprocessing.pdf_extractor import PageData
 from deeplrn.training.builder import build_inference_chunks
 
 
@@ -89,7 +90,12 @@ class InferencePipeline:
         from deeplrn.model.deeplrn_model import DeepLRNModel, ModelConfig
 
         if device == "auto":
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif torch.backends.mps.is_available():
+                device = "mps"
+            else:
+                device = "cpu"
         checkpoint = load_checkpoint(checkpoint_path, map_location=device)
         model_config = ModelConfig(**checkpoint["model_config"])
         model = DeepLRNModel(model_config)
@@ -106,7 +112,7 @@ class InferencePipeline:
     def run(self, pdf_path: str | Path) -> Dict[str, Any]:
         pdf_path = Path(pdf_path)
         started = time.perf_counter()
-        pages = PDFExtractor(pdf_path, config=self.extract_cfg).extract()
+        pages = extract_document(pdf_path, self.extract_cfg)
         chunks = DocumentChunker(
             config=self.chunk_cfg, tokenizer=self.tokenizer
         ).chunk_pages(pages)

@@ -14,7 +14,7 @@ from deeplrn.config import ChunkConfig, ExtractionConfig
 from deeplrn.experiments import PRESETS, get_preset
 from deeplrn.model.deeplrn_model import DeepLRNModel, ModelConfig
 from deeplrn.pipeline import InferencePipeline
-from deeplrn.preprocessing.pdf_extractor import PDFExtractor
+from deeplrn.preprocessing.extract import extract_document
 from deeplrn.schema import load_annotation
 from deeplrn.training.builder import TrainingRecordBuilder, save_training_record
 from deeplrn.training.dataset import DeepLRNDataset
@@ -76,7 +76,7 @@ def prepare_main(argv: list[str] | None = None) -> None:
         pdf_path = Path(annotation.source_pdf)
         if not pdf_path.is_absolute():
             pdf_path = Path(args.pdf_root) / pdf_path
-        pages = PDFExtractor(pdf_path, extraction_config).extract()
+        pages = extract_document(pdf_path, extraction_config)
         record = builder.build(pages, annotation)
         target = output_dir / f"{annotation.doc_id}.json"
         save_training_record(record, target)

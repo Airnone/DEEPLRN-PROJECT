@@ -8,7 +8,7 @@ import os
 import random
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import torch
 from torch import nn
@@ -31,6 +31,15 @@ from deeplrn.schema import FINDING_LABELS
 from .dataset import collate_documents
 
 logger = logging.getLogger(__name__)
+
+
+def _select_device() -> torch.device:
+    """Pick the best available accelerator: CUDA, then Apple Silicon MPS, then CPU."""
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
 
 @dataclass
@@ -63,16 +72,18 @@ class Trainer:
         train_dataset,
         eval_dataset=None,
         config: TrainingConfig | None = None,
+        on_evaluate: Callable[[dict[str, float]], None] | None = None,
     ) -> None:
         self.model = model
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.config = config or TrainingConfig()
+        self.on_evaluate = on_evaluate
         if self.config.gradient_accumulation_steps < 1:
             raise ValueError("gradient_accumulation_steps must be at least 1")
 
         self._set_seed(self.config.seed)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = _select_device()
         self.model.to(self.device)
 
         # Keep the model's actual joint loss aligned with the run manifest.
@@ -236,6 +247,11 @@ class Trainer:
             self.save_checkpoint(
                 os.path.join(self.config.output_dir, "best.pt"), metrics=metrics
             )
+        # Checkpoint is already on disk before this runs, so a caller that
+        # raises here (e.g. to halt on NaN loss or a stuck 0.0 F1) never
+        # loses the best result found so far.
+        if self.on_evaluate is not None:
+            self.on_evaluate(metrics)
         return metrics
 
     def evaluate(self) -> dict[str, float]:
