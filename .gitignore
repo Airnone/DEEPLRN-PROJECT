@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# OS
+.DS_Store
+
+# Generated pipeline output (regenerable from source PDFs/DOCX + annotations)
+output/
+records/
+manifests/
+checkpoints/
+sweeps/
