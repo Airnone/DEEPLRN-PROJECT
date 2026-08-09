@@ -32,6 +32,13 @@ from .dataset import collate_documents
 
 logger = logging.getLogger(__name__)
 
+_PLATEAU_MIN_BATCHES = 4
+_PLATEAU_MIN_RELATIVE_LOSS_DROP = 1e-3
+
+
+class SilentMLBugError(RuntimeError):
+    """Raised when training exhibits a failure mode that requires human review."""
+
 
 def _select_device() -> torch.device:
     """Pick the best available accelerator: CUDA, then Apple Silicon MPS, then CPU."""
@@ -179,6 +186,7 @@ class Trainer:
         self.model.train()
         self.optimizer.zero_grad(set_to_none=True)
         for epoch in range(self.completed_epochs, self.config.num_epochs):
+            epoch_losses: list[float] = []
             iterator = tqdm(
                 self.train_loader, desc=f"Epoch {epoch + 1}/{self.config.num_epochs}"
             )
@@ -186,7 +194,15 @@ class Trainer:
                 outputs = self._forward(batch)
                 if "loss" not in outputs:
                     raise RuntimeError("model returned no loss for a labelled training batch")
-                loss = outputs["loss"] / self.config.gradient_accumulation_steps
+                raw_loss = outputs["loss"]
+                loss_value = float(raw_loss.detach().item())
+                if not math.isfinite(loss_value):
+                    raise SilentMLBugError(
+                        f"non-finite training loss at epoch {epoch + 1}, batch {step + 1}: "
+                        f"{loss_value}; training stopped for human review"
+                    )
+                epoch_losses.append(loss_value)
+                loss = raw_loss / self.config.gradient_accumulation_steps
                 loss.backward()
 
                 last_batch = step + 1 == len(self.train_loader)
@@ -208,7 +224,7 @@ class Trainer:
                     logger.info(
                         "Step %d - loss %.4f",
                         self.global_step,
-                        loss.item() * self.config.gradient_accumulation_steps,
+                        loss_value,
                     )
                 if (
                     self.eval_loader is not None
@@ -226,12 +242,59 @@ class Trainer:
 
             self.completed_epochs = epoch + 1
             if self.eval_loader is not None:
-                self._evaluate_and_maybe_save_best()
+                metrics = self._evaluate_and_maybe_save_best()
+                average_loss = sum(epoch_losses) / len(epoch_losses)
+                relative_loss_drop = self._relative_loss_drop(epoch_losses)
+                logger.info(
+                    "Epoch %d - train_loss %.4f - validation_macro_f1 %.4f "
+                    "- validation_tuple_f1 %.4f - validation_ner_f1 %.4f",
+                    self.completed_epochs,
+                    average_loss,
+                    metrics["finding_macro_f1"],
+                    metrics["tuple_f1"],
+                    metrics["ner_f1"],
+                )
+                self._check_epoch_for_silent_bugs(
+                    epoch=epoch,
+                    metrics=metrics,
+                    relative_loss_drop=relative_loss_drop,
+                )
                 self.model.train()
 
         final_path = os.path.join(self.config.output_dir, "final.pt")
         self.save_checkpoint(final_path)
         return dict(self.last_metrics)
+
+    @staticmethod
+    def _relative_loss_drop(losses: list[float]) -> float | None:
+        if len(losses) < _PLATEAU_MIN_BATCHES:
+            return None
+        window = max(1, len(losses) // 4)
+        initial = sum(losses[:window]) / window
+        final = sum(losses[-window:]) / window
+        return (initial - final) / max(abs(initial), 1e-12)
+
+    @staticmethod
+    def _check_epoch_for_silent_bugs(
+        *,
+        epoch: int,
+        metrics: dict[str, float],
+        relative_loss_drop: float | None,
+    ) -> None:
+        if (
+            epoch == 0
+            and relative_loss_drop is not None
+            and relative_loss_drop < _PLATEAU_MIN_RELATIVE_LOSS_DROP
+        ):
+            raise SilentMLBugError(
+                "training loss did not improve during the first epoch "
+                f"(relative drop={relative_loss_drop:.6f}); training stopped for human review"
+            )
+        if metrics.get("ner_gold_support", 0.0) > 0 and metrics["ner_f1"] == 0.0:
+            raise SilentMLBugError(
+                f"validation NER F1 is 0.0 after epoch {epoch + 1}; "
+                "training stopped for human review"
+            )
 
     def _evaluate_and_maybe_save_best(self) -> dict[str, float]:
         metrics = self.evaluate()
@@ -377,6 +440,7 @@ class Trainer:
                     )
 
         entity = entity_span_metrics(predicted_entities, gold_entities)
+        ner_gold_support = sum(len(spans) for spans in gold_entities.values())
         finding = classification_metrics(
             finding_predictions, finding_gold, len(FINDING_LABELS)
         )
@@ -397,6 +461,7 @@ class Trainer:
             "ner_precision": entity["precision"],
             "ner_recall": entity["recall"],
             "ner_f1": entity["f1"],
+            "ner_gold_support": float(ner_gold_support),
             "finding_accuracy": finding["accuracy"],
             "finding_macro_precision": finding["macro_precision"],
             "finding_macro_recall": finding["macro_recall"],

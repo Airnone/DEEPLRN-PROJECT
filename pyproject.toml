@@ -33,6 +33,7 @@ dev = [
 
 [project.scripts]
 deeplrn-preprocess = "deeplrn.cli:main"
+deeplrn-observations = "deeplrn.preprocessing.observation_extractor:main"
 deeplrn-prepare = "deeplrn.workflows:prepare_main"
 deeplrn-split = "deeplrn.splitting:main"
 deeplrn-train = "deeplrn.workflows:train_main"

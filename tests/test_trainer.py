@@ -1,11 +1,12 @@
 import json
 from types import SimpleNamespace
 
+import pytest
 import torch
 from torch import nn
 
 from deeplrn.training.dataset import DeepLRNDataset
-from deeplrn.training.trainer import Trainer, TrainingConfig
+from deeplrn.training.trainer import SilentMLBugError, Trainer, TrainingConfig
 
 
 class DeterministicModel(nn.Module):
@@ -34,6 +35,20 @@ class DeterministicModel(nn.Module):
             "rel_logits": rel_logits if relation_count else None,
             "loss": self.scale.square(),
         }
+
+
+class NonFiniteLossModel(DeterministicModel):
+    def forward(self, *args, **kwargs):
+        outputs = super().forward(*args, **kwargs)
+        outputs["loss"] = self.scale * torch.tensor(float("nan"))
+        return outputs
+
+
+class PlateauLossModel(DeterministicModel):
+    def forward(self, *args, **kwargs):
+        outputs = super().forward(*args, **kwargs)
+        outputs["loss"] = self.scale * 0.0 + 1.0
+        return outputs
 
 
 def _write_record(path):
@@ -96,3 +111,83 @@ def test_trainer_computes_metrics_and_saves_resumable_final_checkpoint(tmp_path)
     assert checkpoint["epoch"] == 1
     assert checkpoint["global_step"] == 1
 
+
+def test_trainer_stops_on_non_finite_loss(tmp_path):
+    records = tmp_path / "records"
+    records.mkdir()
+    _write_record(records / "doc.json")
+    dataset = DeepLRNDataset(records, max_tokens=4)
+    trainer = Trainer(
+        NonFiniteLossModel(),
+        dataset,
+        dataset,
+        TrainingConfig(
+            num_epochs=1,
+            batch_size=1,
+            gradient_accumulation_steps=1,
+            output_dir=str(tmp_path / "checkpoints"),
+            eval_every=0,
+            save_every=0,
+            log_every=0,
+        ),
+    )
+
+    with pytest.raises(SilentMLBugError, match="non-finite training loss"):
+        trainer.train()
+
+
+def test_trainer_stops_after_epoch_when_ner_f1_is_zero(tmp_path):
+    records = tmp_path / "records"
+    records.mkdir()
+    _write_record(records / "doc.json")
+    record_path = records / "doc.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["chunks"][0]["ner_labels"] = [1, 2, 0, 0]
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+    dataset = DeepLRNDataset(records, max_tokens=4)
+    trainer = Trainer(
+        DeterministicModel(),
+        dataset,
+        dataset,
+        TrainingConfig(
+            num_epochs=2,
+            batch_size=1,
+            gradient_accumulation_steps=1,
+            output_dir=str(tmp_path / "checkpoints"),
+            eval_every=0,
+            save_every=0,
+            log_every=0,
+        ),
+    )
+
+    with pytest.raises(SilentMLBugError, match="validation NER F1 is 0.0 after epoch 1"):
+        trainer.train()
+
+    assert trainer.completed_epochs == 1
+
+
+def test_trainer_stops_when_first_epoch_loss_plateaus(tmp_path):
+    records = tmp_path / "records"
+    records.mkdir()
+    for index in range(4):
+        _write_record(records / f"doc-{index}.json")
+    dataset = DeepLRNDataset(records, max_tokens=4)
+    trainer = Trainer(
+        PlateauLossModel(),
+        dataset,
+        dataset,
+        TrainingConfig(
+            num_epochs=2,
+            batch_size=1,
+            gradient_accumulation_steps=1,
+            output_dir=str(tmp_path / "checkpoints"),
+            eval_every=0,
+            save_every=0,
+            log_every=0,
+        ),
+    )
+
+    with pytest.raises(SilentMLBugError, match="loss did not improve during the first epoch"):
+        trainer.train()
+
+    assert trainer.completed_epochs == 1

@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "artifact_type": "observation_annotation_overlay",
+  "annotation_status": "machine_draft_requires_human_adjudication",
+  "training_eligible": false,
+  "source_candidates": "../../observation_candidates/discrepancy_pilot_observations.jsonl",
+  "source_pdf": "../../pdf/discrepancy_pilot_corpus/pdfs/caloocan_city_2020_coa_executive_summary.pdf",
+  "parent_doc_id": "caloocan-city-2020-es",
+  "lgu": "Caloocan City",
+  "year": 2020,
+  "offset_basis": "zero-indexed half-open character offsets within observation_text",
+  "interpretation_notice": "These labels describe neutral COA audit observations. They do not determine fraud, corruption, personal culpability, or criminal liability.",
+  "visual_verification": {
+    "status": "passed",
+    "pdf_pages_reviewed": [3, 4, 5, 6, 7, 8],
+    "notes": "The rendered pages confirm the extracted observation numbering, monetary amounts, and continuation of observation 2 across PDF pages 6 and 7."
+  },
+  "current_finding_schema": [
+    "unauthorized_expenditure",
+    "unliquidated_cash_advance",
+    "procurement_irregularity",
+    "unsupported_disbursement",
+    "contractor_related_concern"
+  ],
+  "summary": {
+    "observation_candidates": 11,
+    "in_scope_current_schema": 1,
+    "out_of_scope_current_schema": 9,
+    "taxonomy_decision_required": 1
+  },
+  "annotations": [
+    {
+      "observation_id": "caloocan-city-2020-es-obs-001",
+      "evidence_page_numbers": [3],
+      "disposition": "out_of_scope_current_schema",
+      "candidate_issue_family": "cash_or_bank_reconciliation",
+      "proposed_finding_label": null,
+      "confidence": 0.99,
+      "rationale": "The observation concerns unreconciled treasury and accounting records, not one of the five current finding classes.",
+      "entities": [],
+      "relations": [],
+      "human_review_required": true
+    },
+    {
+      "observation_id": "caloocan-city-2020-es-obs-002",
+      "evidence_page_numbers": [3, 4],
+      "disposition": "out_of_scope_current_schema",
+      "candidate_issue_family": "cash_or_bank_reconciliation",
+      "proposed_finding_label": null,
+      "confidence": 0.99,
+      "rationale": "The reported cash-in-bank overstatement arises from unreconciled and unadjusted accounting items, stale checks, and omitted accounts; it is not an unauthorized expenditure or unsupported disbursement finding.",
+      "entities": [],
+      "relations": [],
+      "human_review_required": true
+    },
+    {
+      "observation_id": "caloocan-city-2020-es-obs-003",
+      "evidence_page_numbers": [5],
+      "disposition": "out_of_scope_current_schema",
+      "candidate_issue_family": "unsupported_or_unverified_balance",
+      "proposed_finding_label": null,
+      "confidence": 0.98,
+      "rationale": "The observation concerns an unverified bank-account balance and missing reconciliation support, rather than evidence that a disbursement itself lacked support.",
+      "entities": [],
+      "relations": [],
+      "human_review_required": true
+    },
+    {
+      "observation_id": "caloocan-city-2020-es-obs-004",
+      "evidence_page_numbers": [5],
+      "disposition": "out_of_scope_current_schema",
+      "candidate_issue_family": "unsupported_or_unverified_balance",
+      "proposed_finding_label": null,
+      "confidence": 0.99,
+      "rationale": "This is a dormant-account existence and reconciliation issue, not a finding about a particular disbursement.",
+      "entities": [],
+      "relations": [],
+      "human_review_required": true
+    },
+    {
+      "observation_id": "caloocan-city-2020-es-obs-005",
+      "evidence_page_numbers": [5],
+      "disposition": "out_of_scope_current_schema",
+      "candidate_issue_family": "asset_record_reconciliation",
+      "proposed_finding_label": null,
+      "confidence": 0.99,
+      "rationale": "The observation concerns unreconciled Property, Plant and Equipment records and unidentified prior-year balances, which the current five-class schema does not represent.",
+      "entities": [],
+      "relations": [],
+      "human_review_required": true
+    },
+    {
+      "observation_id": "caloocan-city-2020-es-obs-006",
+      "evidence_page_numbers": [6],
+      "disposition": "out_of_scope_current_schema",
+      "candidate_issue_family": "construction_in_progress_accounting",
+      "proposed_finding_label": null,
+      "confidence": 0.98,
+      "rationale": "The observation concerns unidentified and misclassified Construction in Progress balances, not one of the current finding classes.",
+      "entities": [],
+      "relations": [],
+      "human_review_required": true
+    },
+    {
+      "observation_id": "caloocan-city-2020-es-obs-007",
+      "evidence_page_numbers": [6],
+      "disposition": "out_of_scope_current_schema",
+      "candidate_issue_family": "cash_or_bank_compliance",
+      "proposed_finding_label": null,
+      "confidence": 0.98,
+      "rationale": "The observation concerns deposits maintained with a private bank contrary to a finance circular; it does not describe an expenditure or disbursement.",
+      "entities": [],
+      "relations": [],
+      "human_review_required": true
+    },
+    {
+      "observation_id": "caloocan-city-2020-es-obs-008",
+      "evidence_page_numbers": [6, 7],
+      "disposition": "in_scope_current_schema",
+      "candidate_issue_family": "unliquidated_cash_advance",
+      "proposed_finding_label": "unliquidated_cash_advance",
+      "confidence": 0.99,
+      "rationale": "The observation explicitly states that cash advances remained unliquidated beyond the prescribed period.",
+      "entities": [
+        {
+          "entity_id": "caloocan-city-2020-es-obs-008-e1",
+          "label": "AMOUNT",
+          "start_char": 23,
+          "end_char": 38,
+          "text": "P80.543 million",
+          "page_number": 6
+        },
+        {
+          "entity_id": "caloocan-city-2020-es-obs-008-e2",
+          "label": "FINDING",
+          "start_char": 39,
+          "end_char": 60,
+          "text": "remained unliquidated",
+          "page_number": 6
+        },
+        {
+          "entity_id": "caloocan-city-2020-es-obs-008-e3",
+          "label": "DATE",
+          "start_char": 67,
+          "end_char": 84,
+          "text": "December 31, 2020",
+          "page_number": 6
+        }
+      ],
+      "relations": [
+        {
+          "relation_id": "caloocan-city-2020-es-obs-008-r1",
+          "head_entity_id": "caloocan-city-2020-es-obs-008-e1",
+          "tail_entity_id": "caloocan-city-2020-es-obs-008-e2",
+          "label": "AMOUNT_OF",
+          "evidence_page_numbers": [6]
+        }
+      ],
+      "human_review_required": true
+    },
+    {
+      "observation_id": "caloocan-city-2020-es-obs-009",
+      "evidence_page_numbers": [7],
+      "disposition": "taxonomy_decision_required",
+      "candidate_issue_family": "unsupported_or_unverified_balance",
+      "proposed_finding_label": null,
+      "confidence": 0.9,
+      "rationale": "The accounts-payable balance lacks details and supporting documents, but the text does not establish that a completed disbursement was unsupported. Mapping it to unsupported_disbursement would broaden that class and requires a human taxonomy decision.",
+      "entities": [],
+      "relations": [],
+      "human_review_required": true
+    },
+    {
+      "observation_id": "caloocan-city-2020-es-obs-010",
+      "evidence_page_numbers": [7],
+      "disposition": "out_of_scope_current_schema",
+      "candidate_issue_family": "unsupported_or_unverified_balance",
+      "proposed_finding_label": null,
+      "confidence": 0.98,
+      "rationale": "The observation concerns a dormant Other Payables balance whose validity cannot be ascertained, not a documented unsupported disbursement.",
+      "entities": [],
+      "relations": [],
+      "human_review_required": true
+    },
+    {
+      "observation_id": "caloocan-city-2020-es-obs-011",
+      "evidence_page_numbers": [8],
+      "disposition": "out_of_scope_current_schema",
+      "candidate_issue_family": "program_fund_utilization",
+      "proposed_finding_label": null,
+      "confidence": 0.99,
+      "rationale": "The observation concerns delayed or absent utilization of transferred program funds, not an unauthorized expenditure or unsupported disbursement.",
+      "entities": [],
+      "relations": [],
+      "human_review_required": true
+    }
+  ]
+}

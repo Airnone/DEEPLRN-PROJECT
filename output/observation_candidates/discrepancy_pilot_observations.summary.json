@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "extraction_method": "coa_summary_structure_v1",
+  "manifest_path": "output/pdf/discrepancy_pilot_corpus/corpus_manifest.json",
+  "documents": 5,
+  "observation_candidates": 45,
+  "review_status": "unreviewed",
+  "interpretation_notice": "Candidates are structural extractions of audit observations, not labels or determinations of misconduct, intent, liability, or guilt.",
+  "document_summaries": [
+    {
+      "doc_id": "taguig-city-2020-es",
+      "lgu": "Taguig City",
+      "year": 2020,
+      "pages": 10,
+      "observation_candidates": 14,
+      "candidates_without_recommendations": 2,
+      "candidate_pages": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "doc_id": "caloocan-city-2020-es",
+      "lgu": "Caloocan City",
+      "year": 2020,
+      "pages": 8,
+      "observation_candidates": 11,
+      "candidates_without_recommendations": 0,
+      "candidate_pages": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ]
+    },
+    {
+      "doc_id": "pasig-city-2020-es",
+      "lgu": "Pasig City",
+      "year": 2020,
+      "pages": 10,
+      "observation_candidates": 6,
+      "candidates_without_recommendations": 0,
+      "candidate_pages": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "doc_id": "bacoor-city-cavite-2020-es",
+      "lgu": "Bacoor City",
+      "year": 2020,
+      "pages": 6,
+      "observation_candidates": 10,
+      "candidates_without_recommendations": 0,
+      "candidate_pages": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "doc_id": "naga-city-2024-aar",
+      "lgu": "Naga City",
+      "year": 2024,
+      "pages": 12,
+      "observation_candidates": 4,
+      "candidates_without_recommendations": 0,
+      "candidate_pages": [
+        10,
+        11,
+        12
+      ]
+    }
+  ]
+}

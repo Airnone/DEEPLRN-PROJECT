@@ -43,7 +43,22 @@ time a preset is used.
 
 ## End-to-end workflow
 
-### 1. Create annotations
+### 1. Extract observation candidates
+
+For a collected-corpus manifest, segment COA report summaries into unlabeled,
+page-linked observation/recommendation units:
+
+```powershell
+deeplrn-observations `
+  --manifest output/pdf/discrepancy_pilot_corpus/corpus_manifest.json `
+  --output output/observation_candidates/discrepancy_pilot_observations.jsonl
+```
+
+This structural pass preserves the source PDF, LGU, year, source item, and PDF
+pages. It intentionally emits `review_status: "unreviewed"` and no finding
+label. Review and correct these candidates before creating annotations.
+
+### 2. Create annotations
 
 Offsets use the exact document text obtained by joining extracted pages with a
 newline. They are zero-based, half-open character spans.
@@ -75,7 +90,7 @@ is not the same as conducting a human-review or usability study; this project
 does not implement such a study. If no reliable labeled data can be produced,
 the software can still run but defensible model-quality claims cannot be made.
 
-### 2. Prepare model records
+### 3. Prepare model records
 
 ```bash
 deeplrn-prepare --annotations annotations --pdf-root . --output records --preset deeplrn
@@ -86,7 +101,7 @@ Each record contains token IDs, BIO labels, finding labels, positive and
 negative relation candidates, page/section/box features, sentence IDs, and
 global evidence offsets.
 
-### 3. Make leakage-resistant splits
+### 4. Make leakage-resistant splits
 
 ```bash
 deeplrn-split --records records --output manifests/split.json --seed 13
@@ -96,7 +111,7 @@ Every year from one LGU remains in one partition. MinHash candidate search plus
 exact shingle Jaccard confirmation also prevents near-duplicate reports from
 crossing partitions.
 
-### 4. Train and evaluate
+### 5. Train and evaluate
 
 ```bash
 deeplrn-train --manifest manifests/split.json --output checkpoints --epochs 10 --seed 42
@@ -121,7 +136,7 @@ and macro F1, finding Brier score and expected calibration error, positive-only
 relation F1, and evidence-aware tuple F1. `NO_RELATION` true negatives do not
 inflate relation F1.
 
-### 5. Run evidence-linked inference
+### 6. Run evidence-linked inference
 
 ```bash
 deeplrn-infer --checkpoint checkpoints/best.pt --input report.pdf --output result.json

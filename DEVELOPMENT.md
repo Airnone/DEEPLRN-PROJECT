@@ -372,9 +372,11 @@ not missing model plumbing.
 
 ## Data-dependent work that remains
 
-1. Obtain COA reports under the applicable access and redistribution rules.
-2. Produce reliable entity, finding, relation, and evidence-page labels. This
-   is annotation work, not a human-review or usability study.
+1. Expand the collected COA pilot beyond the current five-LGU source set under
+   the applicable access and redistribution rules.
+2. Review the 45 observation candidates extracted from the discrepancy-focused
+   pilot and produce reliable entity, finding, relation, and evidence-page
+   labels. Candidate extraction is complete, but it is not human annotation.
 3. Prepare separate record sets for encoder families whose tokenizers differ.
 4. Freeze the split manifest, thresholds, seeds, and hyperparameter search.
 5. Train all fixed seeds, run the held-out-LGU test once, and calculate the

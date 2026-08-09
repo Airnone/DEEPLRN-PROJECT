@@ -1,0 +1,599 @@
+{
+  "schema_version": 1,
+  "artifact_type": "observation_annotation_overlay",
+  "annotation_status": "machine_draft_requires_human_adjudication",
+  "training_eligible": false,
+  "source_candidates": "../../observation_candidates/discrepancy_pilot_observations.jsonl",
+  "offset_basis": "zero-indexed half-open character offsets within observation_text",
+  "interpretation_notice": "These labels describe neutral COA audit observations. They do not determine fraud, corruption, personal culpability, or criminal liability.",
+  "current_finding_schema": [
+    "unauthorized_expenditure",
+    "unliquidated_cash_advance",
+    "procurement_irregularity",
+    "unsupported_disbursement",
+    "contractor_related_concern"
+  ],
+  "visual_verification": [
+    {
+      "doc_id": "taguig-city-2020-es",
+      "pdf_pages_reviewed": [3, 4, 5, 6, 7, 8, 9, 10],
+      "status": "passed"
+    },
+    {
+      "doc_id": "pasig-city-2020-es",
+      "pdf_pages_reviewed": [5, 6, 7, 8, 9, 10],
+      "status": "passed"
+    },
+    {
+      "doc_id": "bacoor-city-cavite-2020-es",
+      "pdf_pages_reviewed": [2, 3, 4, 5, 6],
+      "status": "passed"
+    },
+    {
+      "doc_id": "naga-city-2024-aar",
+      "pdf_pages_reviewed": [10, 11, 12],
+      "status": "passed_with_extraction_qa_flag"
+    }
+  ],
+  "summary": {
+    "observation_candidates": 34,
+    "in_scope_current_schema": 2,
+    "out_of_scope_current_schema": 30,
+    "taxonomy_decision_required": 2
+  },
+  "extraction_qa_findings": [
+    {
+      "doc_id": "naga-city-2024-aar",
+      "page_number": 12,
+      "severity": "high",
+      "finding": "The source page states that most Notices of Suspension involved unsubmitted Disbursement Vouchers and supporting documents since CY 2009, but the structural extractor did not emit a separate observation candidate for this passage.",
+      "recommended_action": "Add a reviewed supplemental candidate before corpus freeze; this passage may be a direct unsupported_disbursement example."
+    }
+  ],
+  "documents": [
+    {
+      "parent_doc_id": "taguig-city-2020-es",
+      "source_pdf": "../../pdf/discrepancy_pilot_corpus/pdfs/taguig_city_2020_coa_executive_summary.pdf",
+      "lgu": "Taguig City",
+      "year": 2020,
+      "annotations": [
+        {
+          "observation_id": "taguig-city-2020-es-obs-001",
+          "evidence_page_numbers": [3, 4],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "asset_record_reconciliation",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "Incomplete PPE count and unreconciled property records are outside the current five-class schema.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "taguig-city-2020-es-obs-002",
+          "evidence_page_numbers": [4],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "cash_or_bank_reconciliation",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "The issue is an understated bank balance caused by unsupported accounting adjustments and unreconciled balances, not a specific disbursement finding.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "taguig-city-2020-es-obs-003",
+          "evidence_page_numbers": [5],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "positive_performance",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "This is a commendation for exceeding revenue projections, not an adverse finding.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "taguig-city-2020-es-obs-004",
+          "evidence_page_numbers": [5],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "positive_performance",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "This is a commendation for increased collections, not an adverse finding.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "taguig-city-2020-es-obs-005",
+          "evidence_page_numbers": [5, 6],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "revenue_reporting_classification",
+          "proposed_finding_label": null,
+          "confidence": 0.98,
+          "rationale": "The issue concerns the classification detail used for projected income, which is outside the current schema.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "taguig-city-2020-es-obs-006",
+          "evidence_page_numbers": [6],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "tax_receipt_control",
+          "proposed_finding_label": null,
+          "confidence": 0.98,
+          "rationale": "Improper issuance of official receipts for tax-credit deductions is a revenue-control issue, not an expenditure or disbursement category.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "taguig-city-2020-es-obs-007",
+          "evidence_page_numbers": [6, 7],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "inventory_documentation_and_recording",
+          "proposed_finding_label": null,
+          "confidence": 0.94,
+          "rationale": "The missing substantiation concerns inventory acceptance, issuance, utilization, and expense recording; the passage does not identify a particular unsupported disbursement.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "taguig-city-2020-es-obs-008",
+          "evidence_page_numbers": [7, 8],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "revenue_code_governance",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "Failure to consolidate and update the city revenue code is outside the current finding taxonomy.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "taguig-city-2020-es-obs-009",
+          "evidence_page_numbers": [8],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "revenue_generation_policy",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "The issue concerns outdated tax and fee rates rather than expenditure or disbursement activity.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "taguig-city-2020-es-obs-010",
+          "evidence_page_numbers": [8],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "tax_collection_without_legal_basis",
+          "proposed_finding_label": null,
+          "confidence": 0.98,
+          "rationale": "The collection of a city tax without a legal rate basis is a revenue issue, not an unauthorized expenditure.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "taguig-city-2020-es-obs-011",
+          "evidence_page_numbers": [8],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "tax_rate_application",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "Non-uniform application of a business-tax rate is outside the current expenditure-focused schema.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "taguig-city-2020-es-obs-012",
+          "evidence_page_numbers": [9],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "positive_performance",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "This is a commendation for disaster-fund implementation, not an adverse finding.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "taguig-city-2020-es-obs-013",
+          "evidence_page_numbers": [9],
+          "disposition": "in_scope_current_schema",
+          "candidate_issue_family": "unliquidated_cash_advance",
+          "proposed_finding_label": "unliquidated_cash_advance",
+          "confidence": 0.92,
+          "rationale": "The otherwise positive SAP observation explicitly records exceptions involving delayed liquidation of cash advances; incomplete documentation is a secondary issue.",
+          "entities": [
+            {
+              "entity_id": "taguig-city-2020-es-obs-013-e1",
+              "label": "PROJECT",
+              "start_char": 75,
+              "end_char": 108,
+              "text": "Social Amelioration Program (SAP)",
+              "page_number": 9
+            },
+            {
+              "entity_id": "taguig-city-2020-es-obs-013-e2",
+              "label": "AMOUNT",
+              "start_char": 184,
+              "end_char": 200,
+              "text": "P739.776 million",
+              "page_number": 9
+            },
+            {
+              "entity_id": "taguig-city-2020-es-obs-013-e3",
+              "label": "FINDING",
+              "start_char": 468,
+              "end_char": 510,
+              "text": "delays in the liquidation of cash advances",
+              "page_number": 9
+            }
+          ],
+          "relations": [
+            {
+              "relation_id": "taguig-city-2020-es-obs-013-r1",
+              "head_entity_id": "taguig-city-2020-es-obs-013-e2",
+              "tail_entity_id": "taguig-city-2020-es-obs-013-e1",
+              "label": "AMOUNT_OF",
+              "evidence_page_numbers": [9]
+            },
+            {
+              "relation_id": "taguig-city-2020-es-obs-013-r2",
+              "head_entity_id": "taguig-city-2020-es-obs-013-e3",
+              "tail_entity_id": "taguig-city-2020-es-obs-013-e1",
+              "label": "ASSOCIATED_WITH",
+              "evidence_page_numbers": [9]
+            }
+          ],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "taguig-city-2020-es-obs-014",
+          "evidence_page_numbers": [9, 10],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "positive_performance",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "This is a commendation for pandemic assistance and facilities, not an adverse finding.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        }
+      ]
+    },
+    {
+      "parent_doc_id": "pasig-city-2020-es",
+      "source_pdf": "../../pdf/discrepancy_pilot_corpus/pdfs/pasig_city_2020_coa_executive_summary.pdf",
+      "lgu": "Pasig City",
+      "year": 2020,
+      "annotations": [
+        {
+          "observation_id": "pasig-city-2020-es-obs-001",
+          "evidence_page_numbers": [5, 6],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "asset_record_reconciliation",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "Incomplete PPE inventory and unreconciled property records are outside the current schema.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "pasig-city-2020-es-obs-002",
+          "evidence_page_numbers": [6, 7],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "inventory_count_or_record",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "Incomplete inventory counts, cards, and dormant balances are outside the current taxonomy.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "pasig-city-2020-es-obs-003",
+          "evidence_page_numbers": [7],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "unsupported_or_unverified_balance",
+          "proposed_finding_label": null,
+          "confidence": 0.96,
+          "rationale": "Long-outstanding payable balances are of uncertain validity, but the passage does not establish an unsupported completed disbursement.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "pasig-city-2020-es-obs-004",
+          "evidence_page_numbers": [8],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "asset_accounting_error",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "Erroneous depreciation and duplicate asset recording are accounting errors outside the current schema.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "pasig-city-2020-es-obs-005",
+          "evidence_page_numbers": [8, 9],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "construction_in_progress_accounting",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "Misclassified, overstated, and incompletely documented CIP balances are outside the five current finding classes.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "pasig-city-2020-es-obs-006",
+          "evidence_page_numbers": [9, 10],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "cash_or_bank_reconciliation",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "The understated bank balances arise from unadjusted reconciliation items, not an expenditure or disbursement finding.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        }
+      ]
+    },
+    {
+      "parent_doc_id": "bacoor-city-cavite-2020-es",
+      "source_pdf": "../../pdf/discrepancy_pilot_corpus/pdfs/bacoor_city_cavite_2020_coa_executive_summary.pdf",
+      "lgu": "Bacoor City",
+      "year": 2020,
+      "annotations": [
+        {
+          "observation_id": "bacoor-city-cavite-2020-es-obs-001",
+          "evidence_page_numbers": [2, 3],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "asset_record_reconciliation",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "The PPE ledger and physical-count discrepancy is outside the current schema.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "bacoor-city-cavite-2020-es-obs-002",
+          "evidence_page_numbers": [3],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "construction_in_progress_accounting",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "The unsupported detail relates to an old CIP account balance, not a particular disbursement.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "bacoor-city-cavite-2020-es-obs-003",
+          "evidence_page_numbers": [3, 4],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "asset_depreciation_recording",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "Missing depreciation caused by absent subsidiary asset records is outside the current taxonomy.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "bacoor-city-cavite-2020-es-obs-004",
+          "evidence_page_numbers": [3, 4],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "inventory_recording",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "The issue is improper inventory receipt and issuance accounting, not one of the current finding classes.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "bacoor-city-cavite-2020-es-obs-005",
+          "evidence_page_numbers": [4],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "cash_deficit",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "The SEF cash deficit is a fiscal-position issue rather than a specific unauthorized expenditure.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "bacoor-city-cavite-2020-es-obs-006",
+          "evidence_page_numbers": [4],
+          "disposition": "in_scope_current_schema",
+          "candidate_issue_family": "procurement_irregularity",
+          "proposed_finding_label": "procurement_irregularity",
+          "secondary_label_candidate": "unsupported_disbursement",
+          "confidence": 0.9,
+          "rationale": "The observation directly concerns emergency procurement conducted without required GPPB documentary compliance. The recommendation also refers to missing support on disbursement vouchers, so final adjudication must confirm the primary single label.",
+          "entities": [
+            {
+              "entity_id": "bacoor-city-cavite-2020-es-obs-006-e1",
+              "label": "AMOUNT",
+              "start_char": 30,
+              "end_char": 45,
+              "text": "P292,414,275.46",
+              "page_number": 4
+            },
+            {
+              "entity_id": "bacoor-city-cavite-2020-es-obs-006-e2",
+              "label": "PROJECT",
+              "start_char": 86,
+              "end_char": 105,
+              "text": "COVID-19 operations",
+              "page_number": 4
+            },
+            {
+              "entity_id": "bacoor-city-cavite-2020-es-obs-006-e3",
+              "label": "FINDING",
+              "start_char": 164,
+              "end_char": 216,
+              "text": "without compliance with the documentary requirements",
+              "page_number": 4
+            },
+            {
+              "entity_id": "bacoor-city-cavite-2020-es-obs-006-e4",
+              "label": "ORGANIZATION",
+              "start_char": 257,
+              "end_char": 299,
+              "text": "Government Procurement Policy Board (GPPB)",
+              "page_number": 4
+            },
+            {
+              "entity_id": "bacoor-city-cavite-2020-es-obs-006-e5",
+              "label": "DATE",
+              "start_char": 327,
+              "end_char": 340,
+              "text": "April 6, 2020",
+              "page_number": 4
+            }
+          ],
+          "relations": [
+            {
+              "relation_id": "bacoor-city-cavite-2020-es-obs-006-r1",
+              "head_entity_id": "bacoor-city-cavite-2020-es-obs-006-e1",
+              "tail_entity_id": "bacoor-city-cavite-2020-es-obs-006-e3",
+              "label": "AMOUNT_OF",
+              "evidence_page_numbers": [4]
+            },
+            {
+              "relation_id": "bacoor-city-cavite-2020-es-obs-006-r2",
+              "head_entity_id": "bacoor-city-cavite-2020-es-obs-006-e2",
+              "tail_entity_id": "bacoor-city-cavite-2020-es-obs-006-e3",
+              "label": "ASSOCIATED_WITH",
+              "evidence_page_numbers": [4]
+            },
+            {
+              "relation_id": "bacoor-city-cavite-2020-es-obs-006-r3",
+              "head_entity_id": "bacoor-city-cavite-2020-es-obs-006-e4",
+              "tail_entity_id": "bacoor-city-cavite-2020-es-obs-006-e3",
+              "label": "ASSOCIATED_WITH",
+              "evidence_page_numbers": [4]
+            }
+          ],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "bacoor-city-cavite-2020-es-obs-007",
+          "evidence_page_numbers": [4, 5],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "inventory_recording_and_reporting",
+          "proposed_finding_label": null,
+          "confidence": 0.97,
+          "rationale": "The issue concerns accounting for welfare-goods receipts, issuances, and balances after purchase, not the procurement or authorization of the purchase itself.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "bacoor-city-cavite-2020-es-obs-008",
+          "evidence_page_numbers": [5],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "tax_share_accounting",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "Failure to recognize provincial tax shares is a liability and equity accounting issue outside the current schema.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "bacoor-city-cavite-2020-es-obs-009",
+          "evidence_page_numbers": [5],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "cashbook_reconciliation",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "Incomplete cashbook maintenance and reconciliation are outside the current finding taxonomy.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "bacoor-city-cavite-2020-es-obs-010",
+          "evidence_page_numbers": [5, 6],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "asset_disposal_delay",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "Failure to dispose of unserviceable vehicles is an asset-management issue outside the current taxonomy.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        }
+      ]
+    },
+    {
+      "parent_doc_id": "naga-city-2024-aar",
+      "source_pdf": "../../pdf/discrepancy_pilot_corpus/pdfs/naga_city_2024_aar.pdf",
+      "lgu": "Naga City",
+      "year": 2024,
+      "annotations": [
+        {
+          "observation_id": "naga-city-2024-aar-obs-001",
+          "evidence_page_numbers": [10],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "asset_and_inventory_record_reconciliation",
+          "proposed_finding_label": null,
+          "confidence": 0.99,
+          "rationale": "The qualified-opinion basis is an accounting/property record discrepancy outside the current five-class schema.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "naga-city-2024-aar-obs-002",
+          "evidence_page_numbers": [11],
+          "disposition": "out_of_scope_current_schema",
+          "candidate_issue_family": "disaster_fund_planning_and_reversion",
+          "proposed_finding_label": null,
+          "confidence": 0.98,
+          "rationale": "Incomplete disaster-fund planning and deficient reversions do not map cleanly to a current class.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "naga-city-2024-aar-obs-003",
+          "evidence_page_numbers": [11, 12],
+          "disposition": "taxonomy_decision_required",
+          "candidate_issue_family": "transferred_fund_recording_utilization_and_liquidation",
+          "proposed_finding_label": null,
+          "confidence": 0.87,
+          "rationale": "The summary reports liquidation deficiencies for transferred funds, but it does not say these were cash advances or identify a particular unsupported disbursement. More detailed source records are required before mapping it to either class.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        },
+        {
+          "observation_id": "naga-city-2024-aar-obs-004",
+          "evidence_page_numbers": [12],
+          "disposition": "taxonomy_decision_required",
+          "candidate_issue_family": "donation_funded_program_documentation",
+          "proposed_finding_label": null,
+          "confidence": 0.86,
+          "rationale": "The recommendation identifies missing authorization letters and consumption reports, but the extracted observation states only unspecified deficiencies. Human review must decide whether the full passage supports unsupported_disbursement.",
+          "entities": [],
+          "relations": [],
+          "human_review_required": true
+        }
+      ]
+    }
+  ]
+}
