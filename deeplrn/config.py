@@ -64,7 +64,7 @@ class NERConfig:
 
 @dataclass(frozen=True)
 class FindingClasses:
-    """The five neutral audit-finding categories predicted by the model."""
+    """Neutral, non-exclusive audit-observation categories."""
 
     labels: List[str] = field(default_factory=lambda: [
         "unauthorized_expenditure",
@@ -72,6 +72,11 @@ class FindingClasses:
         "procurement_irregularity",
         "unsupported_disbursement",
         "contractor_related_concern",
+        "asset_record_reconciliation",
+        "cash_or_bank_reconciliation",
+        "inventory_count_or_record",
+        "fund_utilization_or_liquidation",
+        "other_control_or_compliance_observation",
     ])
 
 

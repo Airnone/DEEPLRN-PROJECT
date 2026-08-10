@@ -70,5 +70,5 @@ def test_multitask_model_accepts_layout_tensors(monkeypatch):
         bboxes=torch.ones(2, 3, 12, 4, dtype=torch.long),
     )
     assert output["ner_logits"].shape == (2, 3, 12, 17)
-    assert output["cls_logits"].shape == (2, 5)
+    assert output["cls_logits"].shape == (2, 10)
     assert model.encoder.received_bboxes is True

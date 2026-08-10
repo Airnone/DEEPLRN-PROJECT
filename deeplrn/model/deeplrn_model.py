@@ -57,7 +57,7 @@ class ModelConfig:
 
     # Task sizes
     num_ner_tags: int = 17       # len(NER_CFG.tags)
-    num_violation_classes: int = 5  # legacy field name; len(FINDING_CFG.labels)
+    num_violation_classes: int = len(FINDING_CFG.labels)  # legacy field name
     num_relations: int = 4       # 3 types + NO_RELATION
 
     # Head dropout
@@ -90,6 +90,11 @@ class DeepLRNModel(nn.Module):
         super().__init__()
         self.config = config or ModelConfig()
         cfg = self.config
+        if cfg.num_violation_classes != len(FINDING_CFG.labels):
+            raise ValueError(
+                "num_violation_classes must match the canonical finding schema: "
+                f"expected {len(FINDING_CFG.labels)}, got {cfg.num_violation_classes}"
+            )
 
         # ── Lazy imports so this module doesn't fail if subagent files
         #    haven't been written yet during development ──
@@ -180,8 +185,8 @@ class DeepLRNModel(nn.Module):
             Boolean mask — True for real chunks, False for padding.
         ner_labels : Tensor, shape (batch, num_chunks, seq_len), optional
             NER tag indices (-100 for padding / ignored tokens).
-        violation_labels : Tensor, shape (batch,), optional
-            Violation class indices.
+        finding_labels : Tensor, shape (batch, num_classes), optional
+            Multi-hot audit-finding targets.
         relation_triples : list of lists, optional
             For each document in the batch, a list of
             ``(head_chunk, head_start, head_end, tail_chunk, tail_start, tail_end, rel_label)``
@@ -284,7 +289,7 @@ class DeepLRNModel(nn.Module):
         total_loss = torch.tensor(0.0, device=device)
         has_loss = False
 
-        if ner_labels is not None:
+        if ner_labels is not None and bool((ner_labels != -100).any()):
             flat_ner_logits = ner_logits.view(-1, cfg.num_ner_tags)
             flat_ner_labels = ner_labels.view(-1)
             ner_loss = self.ner_head.compute_loss(
@@ -302,6 +307,11 @@ class DeepLRNModel(nn.Module):
             finding_labels if finding_labels is not None else violation_labels
         )
         if effective_finding_labels is not None:
+            if effective_finding_labels.ndim == 1:
+                effective_finding_labels = torch.nn.functional.one_hot(
+                    effective_finding_labels.long(),
+                    num_classes=cfg.num_violation_classes,
+                ).float()
             cls_loss = self.classifier.compute_loss(cls_logits, effective_finding_labels)
             result["cls_loss"] = cls_loss
             total_loss = total_loss + cfg.cls_loss_weight * cls_loss

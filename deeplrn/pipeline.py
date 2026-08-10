@@ -62,9 +62,12 @@ class InferencePipeline:
         extract_cfg: ExtractionConfig | None = None,
         chunk_cfg: ChunkConfig | None = None,
         relation_threshold: float = 0.5,
+        finding_threshold: float = 0.5,
     ) -> None:
         if not 0.0 <= relation_threshold <= 1.0:
             raise ValueError("relation_threshold must be between zero and one")
+        if not 0.0 <= finding_threshold <= 1.0:
+            raise ValueError("finding_threshold must be between zero and one")
         self.model = model
         self.model.eval()
         self.tokenizer = tokenizer
@@ -73,6 +76,7 @@ class InferencePipeline:
         self.extract_cfg = extract_cfg or EXTRACT_CFG
         self.chunk_cfg = chunk_cfg or CHUNK_CFG
         self.relation_threshold = relation_threshold
+        self.finding_threshold = finding_threshold
         self.id2tag = {index: tag for index, tag in enumerate(NER_CFG.tags)}
         self.id2finding = {index: label for index, label in enumerate(FINDING_CFG.labels)}
         self.id2relation = {0: "NO_RELATION"}
@@ -86,6 +90,7 @@ class InferencePipeline:
         checkpoint_path: str | Path,
         device: str = "auto",
         relation_threshold: float = 0.5,
+        finding_threshold: float = 0.5,
     ) -> "InferencePipeline":
         from deeplrn.model.deeplrn_model import DeepLRNModel, ModelConfig
 
@@ -106,6 +111,7 @@ class InferencePipeline:
             tokenizer,
             device=device,
             relation_threshold=relation_threshold,
+            finding_threshold=finding_threshold,
         )
 
     @torch.no_grad()
@@ -147,7 +153,7 @@ class InferencePipeline:
             "Inference on %s: %d entities, finding=%s (%.3f), %d relations in %.1fs",
             pdf_path.name,
             len(entities),
-            finding["predicted_type"],
+            finding["predicted_types"],
             finding["confidence"],
             len(relations),
             elapsed,
@@ -300,11 +306,34 @@ class InferencePipeline:
         )
 
     def _decode_finding(self, logits: torch.Tensor) -> Dict[str, Any]:
-        probabilities = torch.softmax(logits[0], dim=-1)
-        index = int(probabilities.argmax().item())
+        probabilities = torch.sigmoid(logits[0])
+        selected = [
+            index
+            for index, probability in enumerate(probabilities)
+            if float(probability.item()) > self.finding_threshold
+        ]
+        predictions = [
+            {
+                "type": self.id2finding.get(index, f"unknown_{index}"),
+                "confidence": round(float(probabilities[index].item()), 4),
+            }
+            for index in selected
+        ]
+        primary_index = max(selected, key=lambda index: float(probabilities[index])) if selected else None
         return {
-            "predicted_type": self.id2finding.get(index, f"unknown_{index}"),
-            "confidence": round(float(probabilities[index].item()), 4),
+            "predicted_types": [item["type"] for item in predictions],
+            "predictions": predictions,
+            "threshold": self.finding_threshold,
+            "predicted_type": (
+                self.id2finding.get(primary_index, f"unknown_{primary_index}")
+                if primary_index is not None
+                else None
+            ),
+            "confidence": (
+                round(float(probabilities[primary_index].item()), 4)
+                if primary_index is not None
+                else 0.0
+            ),
             "all_scores": {
                 self.id2finding.get(i, f"class_{i}"): round(float(value.item()), 4)
                 for i, value in enumerate(probabilities)
@@ -420,7 +449,13 @@ class InferencePipeline:
     def _empty_result(pdf_path: Path) -> Dict[str, Any]:
         return {
             "document": {"filename": pdf_path.name, "total_pages": 0, "total_chunks": 0},
-            "finding": {"predicted_type": None, "confidence": 0.0, "all_scores": {}},
+            "finding": {
+                "predicted_types": [],
+                "predictions": [],
+                "predicted_type": None,
+                "confidence": 0.0,
+                "all_scores": {},
+            },
             "entities": [],
             "relationships": [],
         }

@@ -13,12 +13,16 @@ from deeplrn.checkpoints import load_checkpoint
 from deeplrn.config import ChunkConfig, ExtractionConfig
 from deeplrn.experiments import PRESETS, get_preset
 from deeplrn.model.deeplrn_model import DeepLRNModel, ModelConfig
-from deeplrn.pipeline import InferencePipeline
-from deeplrn.preprocessing.extract import extract_document
+from deeplrn.preprocessing.pdf_extractor import PageData
 from deeplrn.schema import load_annotation
 from deeplrn.training.builder import TrainingRecordBuilder, save_training_record
 from deeplrn.training.dataset import DeepLRNDataset
-from deeplrn.training.trainer import Trainer, TrainingConfig
+from deeplrn.training.trainer import (
+    Trainer,
+    TrainingConfig,
+    validate_finding_coverage,
+    validate_supervision_quality,
+)
 
 logger = logging.getLogger("deeplrn")
 
@@ -50,7 +54,11 @@ def prepare_main(argv: list[str] | None = None) -> None:
     paths = (
         [annotation_path]
         if annotation_path.is_file()
-        else sorted(annotation_path.glob("*.json"))
+        else sorted(
+            path
+            for path in annotation_path.glob("*.json")
+            if path.name != "materialization_manifest.json"
+        )
     )
     if not paths:
         parser.error("no annotation JSON files were found")
@@ -76,7 +84,24 @@ def prepare_main(argv: list[str] | None = None) -> None:
         pdf_path = Path(annotation.source_pdf)
         if not pdf_path.is_absolute():
             pdf_path = Path(args.pdf_root) / pdf_path
-        pages = extract_document(pdf_path, extraction_config)
+        if annotation.observation_text:
+            page_number = (
+                annotation.evidence_page_numbers[0]
+                if annotation.evidence_page_numbers
+                else 1
+            )
+            pages = [
+                PageData(
+                    page_number=page_number,
+                    text=annotation.training_text,
+                    source="annotation",
+                    metadata={"evidence_page_numbers": list(annotation.evidence_page_numbers)},
+                )
+            ]
+        else:
+            from deeplrn.preprocessing.extract import extract_document
+
+            pages = extract_document(pdf_path, extraction_config)
         record = builder.build(pages, annotation)
         target = output_dir / f"{annotation.doc_id}.json"
         save_training_record(record, target)
@@ -119,6 +144,13 @@ def train_main(argv: list[str] | None = None) -> None:
     parser.add_argument("--learning-rate", type=float, default=2e-5)
     parser.add_argument("--ner-loss-weight", type=float, default=1.0)
     parser.add_argument("--finding-loss-weight", type=float, default=0.5)
+    parser.add_argument("--finding-threshold", type=float, default=0.5)
+    parser.add_argument("--allow-weak-supervision", action="store_true")
+    parser.add_argument(
+        "--selection-metric",
+        default="tuple_f1",
+        choices=("tuple_f1", "finding_macro_f1", "ner_f1", "relation_f1"),
+    )
     parser.add_argument("--relation-loss-weight", type=float, default=0.5)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-tokens", type=int)
@@ -145,6 +177,15 @@ def train_main(argv: list[str] | None = None) -> None:
         parser.error("the manifest contains no training documents")
     if len(eval_dataset) == 0:
         parser.error("the manifest contains no validation documents")
+    try:
+        validate_finding_coverage(train_dataset, eval_dataset)
+        validate_supervision_quality(
+            train_dataset,
+            eval_dataset,
+            allow_weak_supervision=args.allow_weak_supervision,
+        )
+    except ValueError as error:
+        parser.error(str(error))
 
     model = _model_from_args(args)
     config = TrainingConfig(
@@ -154,6 +195,9 @@ def train_main(argv: list[str] | None = None) -> None:
         gradient_accumulation_steps=args.gradient_accumulation,
         ner_loss_weight=args.ner_loss_weight,
         cls_loss_weight=args.finding_loss_weight,
+        finding_threshold=args.finding_threshold,
+        selection_metric=args.selection_metric,
+        allow_weak_supervision=args.allow_weak_supervision,
         rel_loss_weight=args.relation_loss_weight,
         seed=args.seed,
         output_dir=args.output,
@@ -166,12 +210,15 @@ def train_main(argv: list[str] | None = None) -> None:
 
 
 def infer_main(argv: list[str] | None = None) -> None:
+    from deeplrn.pipeline import InferencePipeline
+
     parser = argparse.ArgumentParser(description="Run evidence-linked DEEPLRN PDF inference.")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--input", required=True, help="Input PDF path")
     parser.add_argument("--output", required=True, help="Output JSON path")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--relation-threshold", type=float, default=0.5)
+    parser.add_argument("--finding-threshold", type=float, default=0.5)
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
     _configure_logging(args.verbose)
@@ -180,6 +227,7 @@ def infer_main(argv: list[str] | None = None) -> None:
         args.checkpoint,
         device=args.device,
         relation_threshold=args.relation_threshold,
+        finding_threshold=args.finding_threshold,
     )
     pipeline.run_and_save(args.input, args.output)
     logger.info("Inference result written to %s", args.output)

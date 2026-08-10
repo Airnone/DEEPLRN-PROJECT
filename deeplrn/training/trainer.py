@@ -19,9 +19,9 @@ from transformers import get_linear_schedule_with_warmup
 from deeplrn.checkpoints import build_checkpoint, load_checkpoint, save_checkpoint
 from deeplrn.evaluation import (
     bio_spans_from_offsets,
-    calibration_metrics,
-    classification_metrics,
     entity_span_metrics,
+    multilabel_calibration_metrics,
+    multilabel_classification_metrics,
     relation_metrics,
     relation_tuples_from_candidates,
     set_prf,
@@ -38,6 +38,55 @@ _PLATEAU_MIN_RELATIVE_LOSS_DROP = 1e-3
 
 class SilentMLBugError(RuntimeError):
     """Raised when training exhibits a failure mode that requires human review."""
+
+
+def finding_counts(dataset) -> torch.Tensor:
+    if dataset is None or len(dataset) == 0:
+        return torch.zeros(len(FINDING_LABELS), dtype=torch.long)
+    return torch.stack(
+        [dataset[index].finding_labels for index in range(len(dataset))]
+    ).sum(dim=0).long()
+
+
+def validate_finding_coverage(train_dataset, validation_dataset) -> None:
+    """Reject validation labels the model never sees in training."""
+
+    if validation_dataset is None:
+        return
+    training_counts = finding_counts(train_dataset)
+    validation_counts = finding_counts(validation_dataset)
+    missing = [
+        FINDING_LABELS[index]
+        for index in range(len(FINDING_LABELS))
+        if validation_counts[index] > 0 and training_counts[index] == 0
+    ]
+    if missing:
+        raise ValueError(
+            "validation contains finding labels absent from training: "
+            f"{missing}; expand/adjudicate the corpus or choose a predeclared "
+            "leakage-safe split before training"
+        )
+
+
+def validate_supervision_quality(
+    train_dataset, validation_dataset, *, allow_weak_supervision: bool
+) -> None:
+    """Require an explicit opt-in before training on machine-draft labels."""
+
+    weak_documents = []
+    for dataset in (train_dataset, validation_dataset):
+        if dataset is None:
+            continue
+        weak_documents.extend(
+            dataset[index].doc_id
+            for index in range(len(dataset))
+            if dataset[index].metadata.get("supervision_quality") == "machine_draft"
+        )
+    if weak_documents and not allow_weak_supervision:
+        raise ValueError(
+            f"{len(weak_documents)} train/validation observations use machine-draft "
+            "labels; adjudicate them or explicitly enable weak supervision"
+        )
 
 
 def _select_device() -> torch.device:
@@ -70,6 +119,9 @@ class TrainingConfig:
     eval_every: int = 50
     save_every: int = 100
     selection_metric: str = "tuple_f1"
+    finding_threshold: float = 0.5
+    balance_finding_labels: bool = True
+    allow_weak_supervision: bool = False
 
 
 class Trainer:
@@ -88,10 +140,19 @@ class Trainer:
         self.on_evaluate = on_evaluate
         if self.config.gradient_accumulation_steps < 1:
             raise ValueError("gradient_accumulation_steps must be at least 1")
+        if not 0.0 <= self.config.finding_threshold <= 1.0:
+            raise ValueError("finding_threshold must be between zero and one")
+        validate_finding_coverage(self.train_dataset, self.eval_dataset)
+        validate_supervision_quality(
+            self.train_dataset,
+            self.eval_dataset,
+            allow_weak_supervision=self.config.allow_weak_supervision,
+        )
 
         self._set_seed(self.config.seed)
         self.device = _select_device()
         self.model.to(self.device)
+        self._configure_finding_balance()
 
         # Keep the model's actual joint loss aligned with the run manifest.
         for name in ("ner_loss_weight", "cls_loss_weight", "rel_loss_weight"):
@@ -125,6 +186,35 @@ class Trainer:
         self.last_metrics: dict[str, float] = {}
         self.best_score = float("-inf")
         os.makedirs(self.config.output_dir, exist_ok=True)
+
+    def _configure_finding_balance(self) -> None:
+        classifier = getattr(self.model, "classifier", None)
+        if (
+            not self.config.balance_finding_labels
+            or classifier is None
+            or not hasattr(classifier, "set_pos_weight")
+        ):
+            return
+        targets = [
+            self.train_dataset[index].finding_labels
+            for index in range(len(self.train_dataset))
+        ]
+        if not targets:
+            return
+        target_tensor = torch.stack(targets).float()
+        positives = target_tensor.sum(dim=0)
+        negatives = len(target_tensor) - positives
+        weights = torch.where(
+            positives > 0,
+            (negatives / positives.clamp(min=1.0)).clamp(min=1.0, max=20.0),
+            torch.ones_like(positives),
+        )
+        classifier.set_pos_weight(weights)
+        logger.info(
+            "Finding positive counts=%s; BCE positive weights=%s",
+            positives.int().tolist(),
+            [round(float(value), 3) for value in weights],
+        )
 
     @staticmethod
     def _set_seed(seed: int) -> None:
@@ -328,8 +418,8 @@ class Trainer:
         predicted_entities: dict[str, set] = defaultdict(set)
         gold_entities: dict[str, set] = defaultdict(set)
         finding_probabilities = []
-        finding_predictions: list[int] = []
-        finding_gold: list[int] = []
+        finding_predictions: list[list[int]] = []
+        finding_gold: list[list[float]] = []
         relation_predictions: list[int] = []
         relation_gold: list[int] = []
         predicted_tuples: set[tuple] = set()
@@ -366,10 +456,12 @@ class Trainer:
                             )
                         )
 
-                probabilities = outputs["cls_logits"].softmax(dim=-1).cpu()
+                probabilities = outputs["cls_logits"].sigmoid().cpu()
                 gold_batch = batch["finding_labels"].tolist()
                 finding_probabilities.append(probabilities)
-                finding_predictions.extend(probabilities.argmax(dim=-1).tolist())
+                finding_predictions.extend(
+                    (probabilities > self.config.finding_threshold).int().tolist()
+                )
                 finding_gold.extend(gold_batch)
 
                 rel_logits = outputs.get("rel_logits")
@@ -441,7 +533,7 @@ class Trainer:
 
         entity = entity_span_metrics(predicted_entities, gold_entities)
         ner_gold_support = sum(len(spans) for spans in gold_entities.values())
-        finding = classification_metrics(
+        finding = multilabel_classification_metrics(
             finding_predictions, finding_gold, len(FINDING_LABELS)
         )
         probability_tensor = (
@@ -449,23 +541,28 @@ class Trainer:
             if finding_probabilities
             else torch.empty((0, len(FINDING_LABELS)))
         )
-        calibration = calibration_metrics(probability_tensor, finding_gold)
+        calibration = multilabel_calibration_metrics(probability_tensor, finding_gold)
         relation = relation_metrics(
             relation_predictions,
             relation_gold,
             no_relation_id=no_relation_id,
         )
         tuples = set_prf(predicted_tuples, gold_tuples)
-        return {
+        metrics = {
             "eval_loss": total_loss / batch_count if batch_count else 0.0,
             "ner_precision": entity["precision"],
             "ner_recall": entity["recall"],
             "ner_f1": entity["f1"],
             "ner_gold_support": float(ner_gold_support),
-            "finding_accuracy": finding["accuracy"],
+            "finding_subset_accuracy": finding["subset_accuracy"],
+            "finding_accuracy": finding["subset_accuracy"],
+            "finding_hamming_accuracy": finding["hamming_accuracy"],
             "finding_macro_precision": finding["macro_precision"],
             "finding_macro_recall": finding["macro_recall"],
             "finding_macro_f1": finding["macro_f1"],
+            "finding_micro_precision": finding["micro_precision"],
+            "finding_micro_recall": finding["micro_recall"],
+            "finding_micro_f1": finding["micro_f1"],
             "finding_brier": calibration["brier"],
             "finding_ece": calibration["ece"],
             "relation_precision": relation["precision"],
@@ -481,6 +578,12 @@ class Trainer:
             ),
             "evidence_page_support": float(evidence_page_total),
         }
+        for label_id, label in enumerate(FINDING_LABELS):
+            for measure in ("precision", "recall", "f1"):
+                metrics[f"finding_{label}_{measure}"] = finding[
+                    f"label_{label_id}_{measure}"
+                ]
+        return metrics
 
     def save_checkpoint(
         self, path: str, *, metrics: dict[str, float] | None = None

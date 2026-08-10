@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from deeplrn.experiments import get_preset, train_tfidf_svm
 
 
@@ -26,6 +28,9 @@ def test_tfidf_svm_baseline_trains_and_persists_metrics(tmp_path):
                         "doc_id": path.stem,
                         "document_text": "unauthorized purchase" if index == 0 else "cash advance",
                         "finding_label": label,
+                        "annotation_metadata": {
+                            "supervision_quality": "machine_draft"
+                        },
                     }
                 ),
                 encoding="utf-8",
@@ -35,7 +40,11 @@ def test_tfidf_svm_baseline_trains_and_persists_metrics(tmp_path):
     manifest.write_text(json.dumps({"documents": documents}), encoding="utf-8")
     output = tmp_path / "baseline.joblib"
 
-    metrics = train_tfidf_svm(manifest, output, max_features=100)
+    with pytest.raises(ValueError, match="machine-draft"):
+        train_tfidf_svm(manifest, output, max_features=100)
+    metrics = train_tfidf_svm(
+        manifest, output, max_features=100, allow_weak_supervision=True
+    )
     assert metrics["accuracy"] == 1.0
     assert output.exists()
     assert output.with_suffix(".metrics.json").exists()

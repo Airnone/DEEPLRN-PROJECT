@@ -143,6 +143,80 @@ def classification_metrics(
     }
 
 
+def multilabel_classification_metrics(
+    predictions: Sequence[Sequence[int | float]],
+    gold: Sequence[Sequence[int | float]],
+    num_labels: int,
+) -> dict[str, float]:
+    """Subset accuracy and macro/micro P/R/F1 for binary label vectors."""
+
+    if len(predictions) != len(gold):
+        raise ValueError("predictions and gold labels must have the same length")
+    if num_labels < 1:
+        raise ValueError("num_labels must be positive")
+    if not gold:
+        return {
+            "subset_accuracy": 0.0,
+            "hamming_accuracy": 0.0,
+            "macro_precision": 0.0,
+            "macro_recall": 0.0,
+            "macro_f1": 0.0,
+            "micro_precision": 0.0,
+            "micro_recall": 0.0,
+            "micro_f1": 0.0,
+        }
+    predicted_rows = [[int(bool(value)) for value in row] for row in predictions]
+    gold_rows = [[int(bool(value)) for value in row] for row in gold]
+    if any(len(row) != num_labels for row in predicted_rows + gold_rows):
+        raise ValueError("every label vector must match num_labels")
+
+    per_label = []
+    total_tp = total_fp = total_fn = 0
+    for label_id in range(num_labels):
+        tp = sum(
+            predicted[label_id] == 1 and target[label_id] == 1
+            for predicted, target in zip(predicted_rows, gold_rows)
+        )
+        fp = sum(
+            predicted[label_id] == 1 and target[label_id] == 0
+            for predicted, target in zip(predicted_rows, gold_rows)
+        )
+        fn = sum(
+            predicted[label_id] == 0 and target[label_id] == 1
+            for predicted, target in zip(predicted_rows, gold_rows)
+        )
+        per_label.append(_prf(tp, fp, fn))
+        total_tp += tp
+        total_fp += fp
+        total_fn += fn
+    micro = _prf(total_tp, total_fp, total_fn)
+    result = {
+        "subset_accuracy": _divide(
+            sum(predicted == target for predicted, target in zip(predicted_rows, gold_rows)),
+            len(gold_rows),
+        ),
+        "hamming_accuracy": _divide(
+            sum(
+                predicted == target
+                for predicted_row, gold_row in zip(predicted_rows, gold_rows)
+                for predicted, target in zip(predicted_row, gold_row)
+            ),
+            len(gold_rows) * num_labels,
+        ),
+        "macro_precision": sum(item["precision"] for item in per_label) / num_labels,
+        "macro_recall": sum(item["recall"] for item in per_label) / num_labels,
+        "macro_f1": sum(item["f1"] for item in per_label) / num_labels,
+        "micro_precision": micro["precision"],
+        "micro_recall": micro["recall"],
+        "micro_f1": micro["f1"],
+    }
+    for label_id, item in enumerate(per_label):
+        result[f"label_{label_id}_precision"] = item["precision"]
+        result[f"label_{label_id}_recall"] = item["recall"]
+        result[f"label_{label_id}_f1"] = item["f1"]
+    return result
+
+
 def calibration_metrics(
     probabilities: torch.Tensor, gold: Sequence[int], num_bins: int = 10
 ) -> dict[str, float]:
@@ -173,6 +247,40 @@ def calibration_metrics(
             weight = in_bin.float().mean().item()
             ece += weight * abs(
                 correct[in_bin].mean().item() - confidence[in_bin].mean().item()
+            )
+    return {"brier": float(brier), "ece": float(ece)}
+
+
+def multilabel_calibration_metrics(
+    probabilities: torch.Tensor,
+    gold: Sequence[Sequence[int | float]],
+    num_bins: int = 10,
+) -> dict[str, float]:
+    """Binary Brier score and ECE over all example-label decisions."""
+
+    if probabilities.ndim != 2:
+        raise ValueError("probabilities must have shape (examples, labels)")
+    if probabilities.shape[0] != len(gold):
+        raise ValueError("probability rows and gold labels must have the same length")
+    if not gold:
+        return {"brier": 0.0, "ece": 0.0}
+    targets = torch.tensor(gold, dtype=torch.float)
+    probs = probabilities.detach().float().cpu()
+    if targets.shape != probs.shape:
+        raise ValueError("gold label vectors must match probability shape")
+    flat_probs = probs.flatten()
+    flat_targets = targets.flatten()
+    brier = torch.square(flat_probs - flat_targets).mean().item()
+    ece = 0.0
+    boundaries = torch.linspace(0.0, 1.0, num_bins + 1)
+    for index in range(num_bins):
+        lower, upper = boundaries[index], boundaries[index + 1]
+        in_bin = (flat_probs > lower) & (flat_probs <= upper)
+        if index == 0:
+            in_bin |= flat_probs.eq(0)
+        if in_bin.any():
+            ece += in_bin.float().mean().item() * abs(
+                flat_targets[in_bin].mean().item() - flat_probs[in_bin].mean().item()
             )
     return {"brier": float(brier), "ece": float(ece)}
 

@@ -23,7 +23,7 @@ class DeterministicModel(nn.Module):
         batch, chunks, tokens = input_ids.shape
         ner_logits = torch.zeros(batch, chunks, tokens, 17, device=input_ids.device)
         ner_logits[..., 0] = self.scale
-        cls_logits = torch.zeros(batch, 5, device=input_ids.device)
+        cls_logits = torch.zeros(batch, 10, device=input_ids.device)
         cls_logits[..., 0] = self.scale
         relation_count = sum(len(items) for items in relation_triples)
         rel_logits = torch.zeros(relation_count, 4, device=input_ids.device)
@@ -191,3 +191,43 @@ def test_trainer_stops_when_first_epoch_loss_plateaus(tmp_path):
         trainer.train()
 
     assert trainer.completed_epochs == 1
+
+
+def test_trainer_rejects_validation_label_absent_from_training(tmp_path):
+    train_dir = tmp_path / "train"
+    validation_dir = tmp_path / "validation"
+    train_dir.mkdir()
+    validation_dir.mkdir()
+    _write_record(train_dir / "train.json")
+    _write_record(validation_dir / "validation.json")
+    validation_path = validation_dir / "validation.json"
+    validation = json.loads(validation_path.read_text(encoding="utf-8"))
+    validation["finding_label_id"] = 2
+    validation_path.write_text(json.dumps(validation), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="absent from training"):
+        Trainer(
+            DeterministicModel(),
+            DeepLRNDataset(train_dir, max_tokens=4),
+            DeepLRNDataset(validation_dir, max_tokens=4),
+            TrainingConfig(output_dir=str(tmp_path / "checkpoints")),
+        )
+
+
+def test_trainer_requires_opt_in_for_machine_draft_labels(tmp_path):
+    records = tmp_path / "records"
+    records.mkdir()
+    _write_record(records / "doc.json")
+    path = records / "doc.json"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["annotation_metadata"] = {"supervision_quality": "machine_draft"}
+    path.write_text(json.dumps(record), encoding="utf-8")
+    dataset = DeepLRNDataset(records, max_tokens=4)
+
+    with pytest.raises(ValueError, match="machine-draft"):
+        Trainer(
+            DeterministicModel(),
+            dataset,
+            dataset,
+            TrainingConfig(output_dir=str(tmp_path / "checkpoints")),
+        )

@@ -150,6 +150,12 @@ class TrainingRecordBuilder:
 
     def build(self, pages: Sequence[PageData], annotation: AnnotatedDocument) -> Dict[str, Any]:
         annotation.validate()
+        ner_reviewed = bool(
+            annotation.metadata.get("ner_reviewed", bool(annotation.entities))
+        )
+        relations_reviewed = bool(
+            annotation.metadata.get("relations_reviewed", bool(annotation.relations))
+        )
         document_text, page_map = concatenate_pages(list(pages))
         for entity in annotation.entities:
             if entity.end_char > len(document_text):
@@ -174,6 +180,8 @@ class TrainingRecordBuilder:
             item, locations = self._build_chunk(
                 chunk, annotation.entities, page_map, words, sections, sentences
             )
+            if not ner_reviewed:
+                item["ner_labels"] = [-100] * len(item["ner_labels"])
             serialized_chunks.append(item)
             for entity_id, location in locations.items():
                 entity_locations[entity_id].append(location)
@@ -186,19 +194,38 @@ class TrainingRecordBuilder:
             for entity_id, locations in entity_locations.items()
         }
 
-        relation_triples, relation_candidate_metadata = self._relation_candidates(
-            annotation, selected
+        if relations_reviewed:
+            relation_triples, relation_candidate_metadata = self._relation_candidates(
+                annotation, selected
+            )
+        else:
+            relation_triples, relation_candidate_metadata = [], []
+        finding_label_ids = sorted(
+            self.finding_to_id[label] for label in annotation.finding_labels
         )
-        return {
+        record = {
             "schema_version": annotation.schema_version,
             "doc_id": annotation.doc_id,
+            "parent_doc_id": annotation.parent_doc_id or annotation.doc_id,
             "source_pdf": annotation.source_pdf,
             "lgu": annotation.lgu,
             "year": annotation.year,
             "document_sha256": sha256(document_text.encode("utf-8")).hexdigest(),
             "document_text": document_text,
-            "finding_label": annotation.finding_label,
-            "finding_label_id": self.finding_to_id[annotation.finding_label],
+            "observation_text": annotation.observation_text,
+            "recommendation_text": annotation.recommendation_text,
+            "evidence_page_numbers": list(annotation.evidence_page_numbers),
+            "finding_labels": list(annotation.finding_labels),
+            "finding_label_ids": finding_label_ids,
+            "finding_label_vector": [
+                int(index in finding_label_ids) for index in range(len(FINDING_LABELS))
+            ],
+            "task_annotations": {
+                "finding": True,
+                "ner": ner_reviewed,
+                "relations": relations_reviewed,
+            },
+            "annotation_metadata": dict(annotation.metadata),
             "pad_token_id": int(getattr(self.tokenizer, "pad_token_id", 1) or 1),
             "chunks": serialized_chunks,
             "relation_triples": relation_triples,
@@ -224,6 +251,11 @@ class TrainingRecordBuilder:
                 for relation in annotation.relations
             ],
         }
+        if len(finding_label_ids) == 1:
+            # Retained for readers of version-1 prepared records.
+            record["finding_label"] = annotation.finding_labels[0]
+            record["finding_label_id"] = finding_label_ids[0]
+        return record
 
     def _build_chunk(
         self,

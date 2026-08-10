@@ -5,11 +5,11 @@ Commission on Audit reports. It extracts neutral audit findings, entities,
 amounts, projects, and textual relationships. Its output is a review aid, not a
 determination of misconduct, intent, liability, or guilt.
 
-The repository is **software-complete and training-ready**. It does not contain
-the proposed COA corpus, human labels, trained research checkpoint, or measured
-held-out results. Those data-dependent deliverables must not be inferred from
-the passing software tests. See [DEVELOPMENT.md](DEVELOPMENT.md) for the design
-rationale and verification record.
+The repository is **software-complete and training-ready**. The included pilot
+overlays are machine drafts, not human-adjudicated gold labels, and must not be
+used for final model-quality claims. It does not contain a trained research
+checkpoint or measured held-out results. See [DEVELOPMENT.md](DEVELOPMENT.md)
+for the design rationale and verification record.
 
 ## Model and data flow
 
@@ -20,14 +20,14 @@ rationale and verification record.
 3. Page, section, and normalized two-dimensional box embeddings are fused with
    encoder token states. Each layout source can be disabled.
 4. A two-layer document Transformer shares information between chunk states.
-5. Joint heads predict exact-span BIO entities, one neutral finding category,
-   and typed entity relations including `NO_RELATION` negatives.
+5. Joint heads predict exact-span BIO entities, zero or more neutral finding
+   categories, and typed entity relations including `NO_RELATION` negatives.
 6. Inference JSON links predictions to character spans, sentences, and source
    pages.
 
-The canonical entity type is `FINDING`, the fifth finding class is
-`contractor_related_concern`, and the neutral relation is `ASSOCIATED_WITH`.
-Legacy prototype labels are accepted only at schema-conversion boundaries.
+Finding prediction is a ten-label, non-exclusive sigmoid task. The canonical
+entity type is `FINDING`, and the neutral relation is `ASSOCIATED_WITH`. Legacy
+single-label records are migrated to one-hot targets at schema boundaries.
 
 ## Installation
 
@@ -60,23 +60,27 @@ label. Review and correct these candidates before creating annotations.
 
 ### 2. Create annotations
 
-Offsets use the exact document text obtained by joining extracted pages with a
-newline. They are zero-based, half-open character spans.
+The preferred unit is one audit observation with its recommendation. Entity
+offsets are zero-based, half-open spans within `observation_text`.
 
 ```json
 {
-  "schema_version": 1,
-  "doc_id": "sample-lgu-2024",
+  "schema_version": 2,
+  "doc_id": "sample-lgu-2024-obs-001",
+  "parent_doc_id": "sample-lgu-2024",
   "source_pdf": "pdfs/sample.pdf",
   "lgu": "Sample LGU",
   "year": 2024,
-  "finding_label": "procurement_irregularity",
+  "observation_text": "Example Builders received an unsupported payment.",
+  "recommendation_text": "Require complete supporting documents.",
+  "evidence_page_numbers": [3],
+  "finding_labels": ["procurement_irregularity", "unsupported_disbursement"],
   "entities": [
     {
       "entity_id": "e1",
       "label": "CONTRACTOR",
-      "start_char": 120,
-      "end_char": 136,
+      "start_char": 0,
+      "end_char": 16,
       "text": "Example Builders",
       "page_number": 3
     }
@@ -90,13 +94,30 @@ is not the same as conducting a human-review or usability study; this project
 does not implement such a study. If no reliable labeled data can be produced,
 the software can still run but defensible model-quality claims cannot be made.
 
+Join extracted candidates to adjudicated overlays with:
+
+```bash
+python -m deeplrn annotations --candidates candidates.jsonl --overlays reviewed.json --output annotations
+```
+
+The command rejects overlays whose `training_eligible` flag is false. For an
+explicitly weak-supervised pilot only, `--allow-machine-drafts` preserves that
+status as `metadata.supervision_quality: "machine_draft"`; it does not convert
+the labels into human gold.
+
+Training and baseline commands reject those weak records by default. A pilot
+must additionally pass `--allow-weak-supervision`, making the provenance choice
+visible in the command and saved training configuration.
+
 ### 3. Prepare model records
 
 ```bash
 deeplrn-prepare --annotations annotations --pdf-root . --output records --preset deeplrn
 ```
 
-This performs PDF extraction and deterministic character-to-token alignment.
+For observation annotations, this uses embedded text and does not reopen the
+PDF. Legacy full-document annotations still use PDF extraction and deterministic
+character-to-token alignment.
 Each record contains token IDs, BIO labels, finding labels, positive and
 negative relation candidates, page/section/box features, sentence IDs, and
 global evidence offsets.
@@ -114,7 +135,8 @@ crossing partitions.
 ### 5. Train and evaluate
 
 ```bash
-deeplrn-train --manifest manifests/split.json --output checkpoints --epochs 10 --seed 42
+deeplrn-train --manifest manifests/split.json --output checkpoints --epochs 10 --seed 42 \
+  --selection-metric finding_macro_f1
 ```
 
 Training saves `best.pt`, periodic checkpoints, and `final.pt`. A checkpoint
@@ -131,10 +153,12 @@ Evaluate without training:
 deeplrn-train --manifest manifests/split.json --output checkpoints --resume checkpoints/best.pt --eval-only
 ```
 
-Reported measures are exact entity-span precision/recall/F1, finding accuracy
-and macro F1, finding Brier score and expected calibration error, positive-only
-relation F1, and evidence-aware tuple F1. `NO_RELATION` true negatives do not
-inflate relation F1.
+Reported measures are exact entity-span precision/recall/F1, multi-label
+finding subset accuracy plus macro/micro F1 and per-label scores, binary Brier
+score and expected calibration error, positive-only relation F1, and
+evidence-aware tuple F1. `NO_RELATION` true negatives do not inflate relation
+F1. Unreviewed NER/relation tasks are masked, so empty draft arrays do not
+silently become negative gold labels.
 
 ### 6. Run evidence-linked inference
 

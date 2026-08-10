@@ -95,6 +95,8 @@ def test_builder_aligns_annotations_layout_and_relations():
     )
     record = builder.build(pages, annotation)
     assert record["finding_label_id"] == 3
+    assert record["finding_label_ids"] == [3]
+    assert sum(record["finding_label_vector"]) == 1
     assert len(record["chunks"]) == 1
     assert any(value > 0 for bbox in record["chunks"][0]["bboxes"] for value in bbox)
     assert any(triple[-1] == 3 for triple in record["relation_triples"])
@@ -104,3 +106,40 @@ def test_builder_aligns_annotations_layout_and_relations():
     assert record["relation_candidate_metadata"][positive_index][
         "evidence_page_numbers"
     ] == [1]
+
+
+def test_builder_serializes_observation_level_multilabel_targets():
+    text = "PPE records were not reconciled before procurement."
+    annotation = AnnotatedDocument.from_dict(
+        {
+            "schema_version": 2,
+            "doc_id": "doc-1-obs-001",
+            "parent_doc_id": "doc-1",
+            "source_pdf": "doc-1.pdf",
+            "lgu": "Example LGU",
+            "year": 2023,
+            "observation_text": text,
+            "evidence_page_numbers": [4],
+            "finding_labels": [
+                "asset_record_reconciliation",
+                "procurement_irregularity",
+            ],
+            "metadata": {"supervision_quality": "human_adjudicated"},
+        }
+    )
+    builder = TrainingRecordBuilder(
+        CharacterTokenizer(),
+        ChunkConfig(max_tokens=64, overlap_tokens=8, tokenizer_name="fake"),
+    )
+    record = builder.build([PageData(page_number=4, text=text)], annotation)
+    assert record["parent_doc_id"] == "doc-1"
+    assert record["finding_label_ids"] == [2, 5]
+    assert sum(record["finding_label_vector"]) == 2
+    assert "finding_label_id" not in record
+    assert record["task_annotations"] == {
+        "finding": True,
+        "ner": False,
+        "relations": False,
+    }
+    assert set(record["chunks"][0]["ner_labels"]) == {-100}
+    assert record["annotation_metadata"]["supervision_quality"] == "human_adjudicated"

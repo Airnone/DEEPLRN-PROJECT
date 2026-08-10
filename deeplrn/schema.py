@@ -14,7 +14,7 @@ from typing import Any, Dict, Iterable, List, Mapping
 import json
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 ENTITY_TYPES = (
     "PERSON",
@@ -33,6 +33,11 @@ FINDING_LABELS = (
     "procurement_irregularity",
     "unsupported_disbursement",
     "contractor_related_concern",
+    "asset_record_reconciliation",
+    "cash_or_bank_reconciliation",
+    "inventory_count_or_record",
+    "fund_utilization_or_liquidation",
+    "other_control_or_compliance_observation",
 )
 
 RELATION_TYPES = (
@@ -42,7 +47,14 @@ RELATION_TYPES = (
 )
 
 LEGACY_ENTITY_ALIASES = {"VIOLATION": "FINDING"}
-LEGACY_FINDING_ALIASES = {"suspicious_contractor_activity": "contractor_related_concern"}
+LEGACY_FINDING_ALIASES = {
+    "suspicious_contractor_activity": "contractor_related_concern",
+    "asset_ppe_records": "asset_record_reconciliation",
+    "cash_and_bank_reconciliation": "cash_or_bank_reconciliation",
+    "inventory_records": "inventory_count_or_record",
+    "fund_utilization_liquidation": "fund_utilization_or_liquidation",
+    "other_control_compliance_observation": "other_control_or_compliance_observation",
+}
 LEGACY_RELATION_ALIASES = {"RESPONSIBLE_FOR": "ASSOCIATED_WITH"}
 
 
@@ -136,7 +148,11 @@ class AnnotatedDocument:
     source_pdf: str
     lgu: str
     year: int
-    finding_label: str
+    finding_labels: tuple[str, ...]
+    observation_text: str = ""
+    recommendation_text: str = ""
+    evidence_page_numbers: tuple[int, ...] = ()
+    parent_doc_id: str = ""
     entities: tuple[EntityAnnotation, ...] = ()
     relations: tuple[RelationAnnotation, ...] = ()
     schema_version: int = SCHEMA_VERSION
@@ -144,16 +160,39 @@ class AnnotatedDocument:
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> "AnnotatedDocument":
+        source_version = int(raw.get("schema_version", 1))
+        if source_version not in (1, SCHEMA_VERSION):
+            raise ValueError(
+                f"unsupported annotation schema version {source_version}; "
+                f"expected 1 or {SCHEMA_VERSION}"
+            )
+        if "finding_labels" in raw:
+            finding_labels = tuple(
+                normalize_finding_label(str(label)) for label in raw["finding_labels"]
+            )
+        elif "finding_label" in raw:
+            finding_labels = (normalize_finding_label(str(raw["finding_label"])),)
+        else:
+            raise ValueError("finding_labels is required")
+        metadata = dict(raw.get("metadata", {}))
+        if source_version != SCHEMA_VERSION:
+            metadata.setdefault("migrated_from_schema_version", source_version)
         document = cls(
             doc_id=str(raw["doc_id"]),
             source_pdf=str(raw["source_pdf"]),
             lgu=str(raw["lgu"]),
             year=int(raw["year"]),
-            finding_label=normalize_finding_label(str(raw["finding_label"])),
+            finding_labels=finding_labels,
+            observation_text=str(raw.get("observation_text", "")),
+            recommendation_text=str(raw.get("recommendation_text", "")),
+            evidence_page_numbers=tuple(
+                int(page) for page in raw.get("evidence_page_numbers", [])
+            ),
+            parent_doc_id=str(raw.get("parent_doc_id", "")),
             entities=tuple(EntityAnnotation.from_dict(x) for x in raw.get("entities", [])),
             relations=tuple(RelationAnnotation.from_dict(x) for x in raw.get("relations", [])),
-            schema_version=int(raw.get("schema_version", SCHEMA_VERSION)),
-            metadata=dict(raw.get("metadata", {})),
+            schema_version=SCHEMA_VERSION,
+            metadata=metadata,
         )
         document.validate()
         return document
@@ -168,8 +207,17 @@ class AnnotatedDocument:
             raise ValueError("doc_id, source_pdf, and lgu are required")
         if self.year < 1900 or self.year > 2100:
             raise ValueError(f"implausible report year: {self.year}")
-        if self.finding_label not in FINDING_LABELS:
-            raise ValueError(f"unsupported finding label: {self.finding_label}")
+        if not self.finding_labels and not self.metadata.get("reviewed_no_finding", False):
+            raise ValueError(
+                "at least one finding label is required unless reviewed_no_finding is true"
+            )
+        if len(self.finding_labels) != len(set(self.finding_labels)):
+            raise ValueError("finding labels must be unique within an observation")
+        unsupported = sorted(set(self.finding_labels) - set(FINDING_LABELS))
+        if unsupported:
+            raise ValueError(f"unsupported finding labels: {unsupported}")
+        if any(page < 1 for page in self.evidence_page_numbers):
+            raise ValueError("evidence pages must be one-indexed")
 
         entity_ids = [entity.entity_id for entity in self.entities]
         if len(entity_ids) != len(set(entity_ids)):
@@ -203,6 +251,22 @@ class AnnotatedDocument:
         ]
         return data
 
+    @property
+    def finding_label(self) -> str:
+        """Legacy accessor for migrated records that have exactly one label."""
+        if len(self.finding_labels) != 1:
+            raise ValueError("this observation has multiple finding labels")
+        return self.finding_labels[0]
+
+    @property
+    def training_text(self) -> str:
+        """Observation-level model input, including recommendation when present."""
+        if not self.observation_text:
+            return ""
+        if not self.recommendation_text:
+            return self.observation_text
+        return f"{self.observation_text}\n\nRecommendation:\n{self.recommendation_text}"
+
 
 def load_annotation(path: str | Path) -> AnnotatedDocument:
     with Path(path).open("r", encoding="utf-8") as stream:
@@ -219,5 +283,6 @@ def label_schema() -> Dict[str, Any]:
         "schema_version": SCHEMA_VERSION,
         "entity_types": list(ENTITY_TYPES),
         "finding_labels": list(FINDING_LABELS),
+        "finding_task": "multi_label",
         "relation_types": list(RELATION_TYPES),
     }

@@ -65,6 +65,40 @@ def test_overlapping_entities_are_rejected():
 
 def test_label_schema_is_self_describing():
     schema = label_schema()
-    assert schema["schema_version"] == 1
+    assert schema["schema_version"] == 2
+    assert schema["finding_task"] == "multi_label"
     assert "FINDING" in schema["entity_types"]
     assert "ASSOCIATED_WITH" in schema["relation_types"]
+
+
+def test_observation_schema_accepts_multiple_labels_and_migrates_v1():
+    raw = valid_document()
+    raw.pop("finding_label")
+    raw["finding_labels"] = [
+        "asset_record_reconciliation",
+        "procurement_irregularity",
+    ]
+    raw["observation_text"] = "Unsupported payment to Example Inc."
+    raw["recommendation_text"] = "Reconcile the records."
+    document = AnnotatedDocument.from_dict(raw)
+    assert document.schema_version == 2
+    assert document.finding_labels == (
+        "asset_record_reconciliation",
+        "procurement_irregularity",
+    )
+    assert "Recommendation:" in document.training_text
+
+    legacy = AnnotatedDocument.from_dict(valid_document())
+    assert legacy.finding_labels == ("procurement_irregularity",)
+    assert legacy.metadata["migrated_from_schema_version"] == 1
+
+
+def test_empty_labels_require_explicit_reviewed_negative():
+    raw = valid_document()
+    raw.pop("finding_label")
+    raw["schema_version"] = 2
+    raw["finding_labels"] = []
+    with pytest.raises(ValueError, match="reviewed_no_finding"):
+        AnnotatedDocument.from_dict(raw)
+    raw["metadata"] = {"reviewed_no_finding": True}
+    assert AnnotatedDocument.from_dict(raw).finding_labels == ()

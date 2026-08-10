@@ -5,10 +5,24 @@ from deeplrn.evaluation import (
     bio_spans_from_offsets,
     calibration_metrics,
     classification_metrics,
+    multilabel_calibration_metrics,
+    multilabel_classification_metrics,
     relation_metrics,
     relation_tuples_from_candidates,
     set_prf,
 )
+
+
+def test_multilabel_metrics_score_exact_and_partial_predictions():
+    predictions = [[1, 0, 1], [0, 1, 0]]
+    gold = [[1, 0, 1], [1, 1, 0]]
+    metrics = multilabel_classification_metrics(predictions, gold, 3)
+    assert metrics["subset_accuracy"] == 0.5
+    assert metrics["micro_f1"] == pytest.approx(6 / 7)
+    calibration = multilabel_calibration_metrics(
+        torch.tensor([[0.9, 0.1, 0.8], [0.4, 0.7, 0.2]]), gold
+    )
+    assert 0.0 <= calibration["brier"] <= 1.0
 
 
 def test_bio_spans_decode_global_offsets_and_recover_invalid_i():

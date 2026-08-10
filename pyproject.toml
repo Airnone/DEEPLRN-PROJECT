@@ -39,6 +39,7 @@ deeplrn-split = "deeplrn.splitting:main"
 deeplrn-train = "deeplrn.workflows:train_main"
 deeplrn-infer = "deeplrn.workflows:infer_main"
 deeplrn-experiments = "deeplrn.experiments:experiments_main"
+deeplrn-annotations = "deeplrn.annotations:annotations_main"
 
 [tool.setuptools.packages.find]
 include = ["deeplrn*"]

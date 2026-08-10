@@ -8,6 +8,7 @@ console scripts (see ``pyproject.toml``):
     python -m deeplrn train       -> deeplrn.workflows.train_main
     python -m deeplrn infer       -> deeplrn.workflows.infer_main
     python -m deeplrn experiments -> deeplrn.experiments.experiments_main
+    python -m deeplrn annotations -> deeplrn.annotations.annotations_main
 
 With no recognized subcommand, falls back to the original preprocessing CLI
 (``deeplrn.cli.main``) so existing invocations like
@@ -18,7 +19,7 @@ from __future__ import annotations
 
 import sys
 
-_SUBCOMMANDS = {"prepare", "split", "train", "infer", "experiments"}
+_SUBCOMMANDS = {"prepare", "split", "train", "infer", "experiments", "annotations"}
 
 
 def _dispatch(argv: list[str]) -> None:
@@ -44,6 +45,10 @@ def _dispatch(argv: list[str]) -> None:
             from deeplrn.experiments import experiments_main
 
             experiments_main(rest)
+        elif subcommand == "annotations":
+            from deeplrn.annotations import annotations_main
+
+            annotations_main(rest)
         return
 
     from deeplrn.cli import main as preprocess_main

@@ -11,6 +11,8 @@ import random
 import torch
 from torch.utils.data import Dataset
 
+from deeplrn.schema import FINDING_LABELS
+
 
 RelationTriple = Tuple[int, int, int, int, int, int, int]
 
@@ -21,7 +23,7 @@ class DocumentSample:
     chunk_input_ids: torch.Tensor
     chunk_attention_masks: torch.Tensor
     ner_labels: torch.Tensor
-    finding_label: int
+    finding_labels: torch.Tensor
     relation_triples: List[RelationTriple]
     num_chunks: int
     page_ids: torch.Tensor
@@ -32,9 +34,39 @@ class DocumentSample:
     metadata: Dict[str, Any]
 
     @property
-    def violation_label(self) -> int:
+    def finding_label(self) -> int:
+        """Legacy single-label view; unavailable for genuinely multi-label data."""
+        indexes = self.finding_labels.nonzero().flatten().tolist()
+        if len(indexes) != 1:
+            raise ValueError("sample does not have exactly one finding label")
+        return int(indexes[0])
+
+    @property
+    def violation_label(self) -> torch.Tensor:
         """Legacy alias retained while callers migrate to finding terminology."""
-        return self.finding_label
+        return self.finding_labels
+
+
+def _finding_vector(data: Dict[str, Any]) -> torch.Tensor:
+    """Load schema-v2 multi-hot targets or migrate a version-1 class ID."""
+
+    if "finding_label_vector" in data:
+        values = [float(value) for value in data["finding_label_vector"]]
+    elif "finding_label_ids" in data:
+        values = [0.0] * len(FINDING_LABELS)
+        for label_id in data["finding_label_ids"]:
+            values[int(label_id)] = 1.0
+    else:
+        label_id = int(data.get("finding_label_id", data.get("violation_label", 0)))
+        values = [0.0] * len(FINDING_LABELS)
+        values[label_id] = 1.0
+    if len(values) != len(FINDING_LABELS):
+        raise ValueError(
+            f"finding_label_vector must contain {len(FINDING_LABELS)} values"
+        )
+    if any(value not in (0.0, 1.0) for value in values):
+        raise ValueError("finding_label_vector must be binary")
+    return torch.tensor(values, dtype=torch.float)
 
 
 def _pad_list(values: list, length: int, pad_value: Any) -> list:
@@ -142,13 +174,12 @@ class DeepLRNDataset(Dataset):
             sentence_rows = [[-1] * self.max_tokens]
             offset_rows = [[[-1, -1] for _ in range(self.max_tokens)]]
 
-        finding_label = int(data.get("finding_label_id", data.get("violation_label", 0)))
         return DocumentSample(
             doc_id=doc_id,
             chunk_input_ids=torch.tensor(input_rows, dtype=torch.long),
             chunk_attention_masks=torch.tensor(mask_rows, dtype=torch.long),
             ner_labels=torch.tensor(ner_rows, dtype=torch.long),
-            finding_label=finding_label,
+            finding_labels=_finding_vector(data),
             relation_triples=[tuple(item) for item in data.get("relation_triples", [])],
             num_chunks=len(input_rows),
             page_ids=torch.tensor(page_rows, dtype=torch.long),
@@ -161,6 +192,12 @@ class DeepLRNDataset(Dataset):
                 "lgu": data.get("lgu", ""),
                 "year": data.get("year"),
                 "source_pdf": data.get("source_pdf", ""),
+                "parent_doc_id": data.get("parent_doc_id", doc_id),
+                "finding_labels": data.get("finding_labels", []),
+                "evidence_page_numbers": data.get("evidence_page_numbers", []),
+                "supervision_quality": data.get("annotation_metadata", {}).get(
+                    "supervision_quality", "unspecified"
+                ),
                 "entities": data.get("entities", []),
                 "relations": data.get("relations", []),
                 "relation_candidate_metadata": data.get(
@@ -182,7 +219,9 @@ def collate_documents(batch: List[DocumentSample]) -> Dict[str, Any]:
     attention_mask = torch.zeros((batch_size, max_chunks, max_tokens), dtype=torch.long)
     chunk_mask = torch.zeros((batch_size, max_chunks), dtype=torch.bool)
     ner_labels = torch.full((batch_size, max_chunks, max_tokens), -100, dtype=torch.long)
-    finding_labels = torch.zeros(batch_size, dtype=torch.long)
+    finding_labels = torch.zeros(
+        (batch_size, len(FINDING_LABELS)), dtype=torch.float
+    )
     page_ids = torch.zeros((batch_size, max_chunks, max_tokens), dtype=torch.long)
     section_ids = torch.zeros((batch_size, max_chunks, max_tokens), dtype=torch.long)
     bboxes = torch.zeros((batch_size, max_chunks, max_tokens, 4), dtype=torch.long)
@@ -203,7 +242,7 @@ def collate_documents(batch: List[DocumentSample]) -> Dict[str, Any]:
         bboxes[index, :count] = sample.bboxes
         sentence_ids[index, :count] = sample.sentence_ids
         token_offsets[index, :count] = sample.token_offsets
-        finding_labels[index] = sample.finding_label
+        finding_labels[index] = sample.finding_labels
         relation_triples.append(sample.relation_triples)
         doc_ids.append(sample.doc_id)
         metadata.append(sample.metadata)
@@ -250,7 +289,7 @@ def create_dummy_dataset(output_dir: str | Path, num_docs: int = 5) -> None:
         record = {
             "doc_id": f"dummy_doc_{index}",
             "chunks": chunks,
-            "finding_label_id": random.randint(0, 4),
+            "finding_label_ids": [random.randint(0, len(FINDING_LABELS) - 1)],
             "relation_triples": [],
         }
         with (target / f"doc_{index}.json").open("w", encoding="utf-8") as stream:

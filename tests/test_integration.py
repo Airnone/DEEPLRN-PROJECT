@@ -107,7 +107,7 @@ def main():
     logger.info("  ✓ NER logits:       %s", tuple(ner_logits.shape))
 
     cls_logits = outputs["cls_logits"]
-    assert cls_logits.shape == (batch_size, 5), \
+    assert cls_logits.shape == (batch_size, 10), \
         f"Classification logits shape mismatch: {cls_logits.shape}"
     logger.info("  ✓ Class logits:     %s", tuple(cls_logits.shape))
 

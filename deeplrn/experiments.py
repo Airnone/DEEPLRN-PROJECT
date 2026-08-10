@@ -12,8 +12,9 @@ import joblib
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import Pipeline
 from sklearn.svm import LinearSVC
+from sklearn.multiclass import OneVsRestClassifier
 
-from deeplrn.evaluation import classification_metrics
+from deeplrn.evaluation import multilabel_classification_metrics
 from deeplrn.schema import FINDING_LABELS
 
 
@@ -99,6 +100,7 @@ def train_tfidf_svm(
     max_features: int = 100_000,
     c: float = 1.0,
     seed: int = 42,
+    allow_weak_supervision: bool = False,
 ) -> dict[str, float]:
     """Train and evaluate the proposal's TF-IDF plus linear-SVM baseline."""
 
@@ -109,8 +111,33 @@ def train_tfidf_svm(
     validation = _records_for_split(manifest, manifest_path, "validation")
     if not training or not validation:
         raise ValueError("the manifest needs non-empty train and validation splits")
+    weak_count = sum(
+        record.get("annotation_metadata", {}).get("supervision_quality")
+        == "machine_draft"
+        for record in training + validation
+    )
+    if weak_count and not allow_weak_supervision:
+        raise ValueError(
+            f"{weak_count} train/validation observations use machine-draft labels; "
+            "pass --allow-weak-supervision only for an explicitly weak pilot"
+        )
 
     finding_to_id = {label: index for index, label in enumerate(FINDING_LABELS)}
+
+    def targets(record: dict) -> list[int]:
+        if "finding_label_vector" in record:
+            vector = [int(value) for value in record["finding_label_vector"]]
+        else:
+            labels = record.get("finding_labels")
+            if labels is None:
+                labels = [record["finding_label"]]
+            vector = [0] * len(FINDING_LABELS)
+            for label in labels:
+                vector[finding_to_id[label]] = 1
+        if len(vector) != len(FINDING_LABELS):
+            raise ValueError("finding label vector has the wrong length")
+        return vector
+
     pipeline = Pipeline(
         [
             (
@@ -122,18 +149,26 @@ def train_tfidf_svm(
                     sublinear_tf=True,
                 ),
             ),
-            ("svm", LinearSVC(C=c, random_state=seed, class_weight="balanced")),
+            (
+                "svm",
+                OneVsRestClassifier(
+                    LinearSVC(C=c, random_state=seed, class_weight="balanced")
+                ),
+            ),
         ]
     )
     pipeline.fit(
         [record["document_text"] for record in training],
-        [finding_to_id[record["finding_label"]] for record in training],
+        [targets(record) for record in training],
     )
-    gold = [finding_to_id[record["finding_label"]] for record in validation]
+    gold = [targets(record) for record in validation]
     predictions = pipeline.predict(
         [record["document_text"] for record in validation]
     ).tolist()
-    metrics = classification_metrics(predictions, gold, len(FINDING_LABELS))
+    metrics = multilabel_classification_metrics(
+        predictions, gold, len(FINDING_LABELS)
+    )
+    metrics["accuracy"] = metrics["subset_accuracy"]
 
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -163,6 +198,7 @@ def experiments_main(argv: list[str] | None = None) -> None:
     svm_parser.add_argument("--max-features", type=int, default=100_000)
     svm_parser.add_argument("--c", type=float, default=1.0)
     svm_parser.add_argument("--seed", type=int, default=42)
+    svm_parser.add_argument("--allow-weak-supervision", action="store_true")
     args = parser.parse_args(argv)
 
     if args.command == "list":
@@ -179,5 +215,6 @@ def experiments_main(argv: list[str] | None = None) -> None:
         max_features=args.max_features,
         c=args.c,
         seed=args.seed,
+        allow_weak_supervision=args.allow_weak_supervision,
     )
     print(json.dumps(metrics, indent=2, sort_keys=True))

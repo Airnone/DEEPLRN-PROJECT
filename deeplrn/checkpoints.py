@@ -11,7 +11,7 @@ import torch
 from deeplrn.schema import label_schema
 
 
-CHECKPOINT_FORMAT_VERSION = 1
+CHECKPOINT_FORMAT_VERSION = 2
 
 
 def _config_dict(value: Any) -> Dict[str, Any]:
