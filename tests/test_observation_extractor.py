@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from deeplrn.preprocessing.observation_extractor import ObservationExtractor
+import json
+
+import pytest
+
+from deeplrn.preprocessing.observation_extractor import (
+    ObservationCandidate,
+    ObservationExtractor,
+    extract_manifest,
+)
 from deeplrn.preprocessing.pdf_extractor import PageData
 
 
@@ -124,3 +132,138 @@ Status of Implementation of Prior Years' Audit Recommendations"""
     assert data["lgu"] == "Sample City"
     assert data["year"] == 2024
     assert data["source_pdf"] == "pdfs/sample.pdf"
+
+
+def test_manifest_continues_when_one_document_has_no_candidates(tmp_path, monkeypatch):
+    pdf_dir = tmp_path / "pdfs"
+    pdf_dir.mkdir()
+    (pdf_dir / "one.pdf").write_bytes(b"placeholder")
+    (pdf_dir / "empty.pdf").write_bytes(b"placeholder")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "documents": [
+                    {
+                        "doc_id": "one-2024",
+                        "lgu": "One City",
+                        "year": 2024,
+                        "local_path": "pdfs/one.pdf",
+                    },
+                    {
+                        "doc_id": "empty-2024",
+                        "lgu": "Empty City",
+                        "year": 2024,
+                        "local_path": "pdfs/empty.pdf",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "deeplrn.preprocessing.observation_extractor.PDFExtractor.extract",
+        lambda _self: [PageData(page_number=1, text="extracted text")],
+    )
+
+    def fake_extract(_self, _pages, *, doc_id, source_pdf, lgu, year, metadata=None):
+        if doc_id == "empty-2024":
+            raise ValueError("no audit-opinion or significant-observation section was found")
+        return [
+            ObservationCandidate(
+                observation_id="one-2024-observation-001",
+                doc_id=doc_id,
+                source_pdf=source_pdf,
+                lgu=lgu,
+                year=year,
+                section="audit_opinion",
+                source_item="1",
+                page_start=1,
+                page_end=1,
+                page_numbers=(1,),
+                observation_text="The balance was misstated.",
+                metadata=dict(metadata or {}),
+            )
+        ]
+
+    monkeypatch.setattr(ObservationExtractor, "extract", fake_extract)
+
+    candidates, summary = extract_manifest(manifest_path)
+
+    assert [candidate.doc_id for candidate in candidates] == ["one-2024"]
+    assert summary["documents"] == 2
+    assert summary["observation_candidates"] == 1
+    assert summary["document_summaries"][0]["extraction_status"] == "extracted"
+    assert summary["document_summaries"][1]["extraction_status"] == "no_candidates"
+    assert summary["document_summaries"][1]["observation_candidates"] == 0
+
+
+def test_manifest_does_not_swallow_unrelated_value_errors(tmp_path, monkeypatch):
+    pdf_path = tmp_path / "broken.pdf"
+    pdf_path.write_bytes(b"placeholder")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "documents": [
+                    {
+                        "doc_id": "broken-2024",
+                        "lgu": "Broken City",
+                        "year": 2024,
+                        "local_path": "broken.pdf",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "deeplrn.preprocessing.observation_extractor.PDFExtractor.extract",
+        lambda _self: [PageData(page_number=1, text="extracted text")],
+    )
+
+    def fail_extract(*_args, **_kwargs):
+        raise ValueError("unexpected parser failure")
+
+    monkeypatch.setattr(ObservationExtractor, "extract", fail_extract)
+
+    with pytest.raises(ValueError, match="unexpected parser failure"):
+        extract_manifest(manifest_path)
+
+
+def test_manifest_skips_known_image_only_document_without_ocr(tmp_path, monkeypatch):
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(b"placeholder")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "documents": [
+                    {
+                        "doc_id": "scan-2024",
+                        "lgu": "Scan City",
+                        "year": 2024,
+                        "local_path": "scan.pdf",
+                        "pages": 12,
+                        "extraction_profile": "image_only_ocr_required",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def unexpected_extract(_self):
+        pytest.fail("image-only PDF should not be opened when OCR is disabled")
+
+    monkeypatch.setattr(
+        "deeplrn.preprocessing.observation_extractor.PDFExtractor.extract",
+        unexpected_extract,
+    )
+
+    candidates, summary = extract_manifest(manifest_path)
+
+    assert candidates == []
+    assert summary["document_summaries"][0]["pages"] == 12
+    assert summary["document_summaries"][0]["extraction_status"] == "ocr_required"

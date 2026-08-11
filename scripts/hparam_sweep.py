@@ -56,6 +56,8 @@ class EvalGuard:
     """Watches evaluation metrics and halts training on a silent ML bug."""
 
     label: str
+    plateau_metric: str = "tuple_f1"
+    ner_enabled: bool = True
     epoch_hint: int = 0
     _seen_evals: int = 0
     _best_for_plateau: float = float("-inf")
@@ -73,14 +75,14 @@ class EvalGuard:
 
         finding_f1 = metrics.get("finding_macro_f1", 0.0)
         ner_f1 = metrics.get("ner_f1", 0.0)
-        if finding_f1 == 0.0 and ner_f1 == 0.0:
+        if finding_f1 == 0.0 and (not self.ner_enabled or ner_f1 == 0.0):
             raise TrainingHalted(
-                f"[{self.label}] finding_macro_f1 and ner_f1 are both 0.0 at "
-                f"evaluation #{self._seen_evals} -- the model appears to be "
-                f"learning nothing. Halting for human judgment."
+                f"[{self.label}] finding_macro_f1 is 0.0 at evaluation "
+                f"#{self._seen_evals} -- the enabled finding task appears to be "
+                "learning nothing. Halting for human judgment."
             )
 
-        score = metrics.get("tuple_f1", 0.0)
+        score = metrics.get(self.plateau_metric, 0.0)
         if score > self._best_for_plateau + PLATEAU_EPSILON:
             self._best_for_plateau = score
             self._stale_evals = 0
@@ -88,7 +90,7 @@ class EvalGuard:
             self._stale_evals += 1
         if self._stale_evals >= PLATEAU_PATIENCE:
             raise TrainingHalted(
-                f"[{self.label}] tuple_f1 has not improved by more than "
+                f"[{self.label}] {self.plateau_metric} has not improved by more than "
                 f"{PLATEAU_EPSILON} for {self._stale_evals} consecutive "
                 f"evaluations -- training appears plateaued. Halting for "
                 f"human judgment."
@@ -121,6 +123,12 @@ def run_sweep(
     seed: int,
     output_root: Path,
     results_path: Path,
+    gradient_accumulation_steps: int = 1,
+    ner_loss_weight: float = 1.0,
+    finding_loss_weight: float = 0.5,
+    relation_loss_weight: float = 0.5,
+    selection_metric: str = "tuple_f1",
+    finding_threshold: float = 0.5,
 ) -> list[dict[str, Any]]:
     _require_trainable_manifest(manifest_path)
 
@@ -145,11 +153,21 @@ def run_sweep(
             config = TrainingConfig(
                 learning_rate=learning_rate,
                 batch_size=batch_size,
+                gradient_accumulation_steps=gradient_accumulation_steps,
                 num_epochs=epochs,
+                ner_loss_weight=ner_loss_weight,
+                cls_loss_weight=finding_loss_weight,
+                rel_loss_weight=relation_loss_weight,
+                selection_metric=selection_metric,
+                finding_threshold=finding_threshold,
                 seed=seed,
                 output_dir=str(run_dir),
             )
-            guard = EvalGuard(label=label)
+            guard = EvalGuard(
+                label=label,
+                plateau_metric=selection_metric,
+                ner_enabled=ner_loss_weight > 0.0,
+            )
             trainer = Trainer(
                 model, train_dataset, eval_dataset, config, on_evaluate=guard
             )
@@ -157,6 +175,12 @@ def run_sweep(
             entry: dict[str, Any] = {
                 "learning_rate": learning_rate,
                 "batch_size": batch_size,
+                "gradient_accumulation_steps": gradient_accumulation_steps,
+                "ner_loss_weight": ner_loss_weight,
+                "finding_loss_weight": finding_loss_weight,
+                "relation_loss_weight": relation_loss_weight,
+                "selection_metric": selection_metric,
+                "finding_threshold": finding_threshold,
                 "output_dir": str(run_dir),
                 "status": "completed",
             }
@@ -165,6 +189,7 @@ def run_sweep(
                 entry["metrics"] = metrics
                 entry["finding_macro_f1"] = metrics.get("finding_macro_f1")
                 entry["tuple_f1"] = metrics.get("tuple_f1")
+                entry["best_selection_score"] = trainer.best_score
                 entry["best_checkpoint"] = str(run_dir / "best.pt")
             except TrainingHalted as halt:
                 entry["status"] = "halted"
@@ -208,6 +233,16 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--gradient-accumulation", type=int, default=1)
+    parser.add_argument("--ner-loss-weight", type=float, default=1.0)
+    parser.add_argument("--finding-loss-weight", type=float, default=0.5)
+    parser.add_argument("--relation-loss-weight", type=float, default=0.5)
+    parser.add_argument(
+        "--selection-metric",
+        choices=("tuple_f1", "finding_macro_f1", "ner_f1", "relation_f1"),
+        default="tuple_f1",
+    )
+    parser.add_argument("--finding-threshold", type=float, default=0.5)
     parser.add_argument("--output-root", type=Path, default=Path("checkpoints/sweep"))
     parser.add_argument(
         "--results", type=Path, default=Path("sweeps/sweep_results.json")
@@ -228,6 +263,12 @@ def main(argv: list[str] | None = None) -> None:
         seed=args.seed,
         output_root=args.output_root,
         results_path=args.results,
+        gradient_accumulation_steps=args.gradient_accumulation,
+        ner_loss_weight=args.ner_loss_weight,
+        finding_loss_weight=args.finding_loss_weight,
+        relation_loss_weight=args.relation_loss_weight,
+        selection_metric=args.selection_metric,
+        finding_threshold=args.finding_threshold,
     )
     print(json.dumps(results, indent=2))
 

@@ -47,6 +47,9 @@ ISSUE_FAMILY_LABELS: dict[str, tuple[str, ...]] = {
     "tax_rate_application": ("other_control_or_compliance_observation",),
 }
 
+_MOJIBAKE_MARKERS = ("â", "Â", "ï", "ð")
+_PRIVATE_USE_BULLETS = str.maketrans({"\uf0a7": "▪", "\uf0b7": "•", "\uf0d8": "•"})
+
 
 def _load_candidates(path: str | Path) -> dict[str, dict[str, Any]]:
     candidates: dict[str, dict[str, Any]] = {}
@@ -76,9 +79,94 @@ def _overlay_entries(
         }
         for annotation in overlay["annotations"]:
             yield context, annotation
+    for decision in overlay.get("decisions", []):
+        yield overlay, decision
     for document in overlay.get("documents", []):
         for annotation in document.get("annotations", []):
             yield document, annotation
+
+
+def _repair_mojibake(value: str) -> str:
+    """Undo the common UTF-8-as-Windows-1252 corruption in extracted text."""
+
+    repaired = value
+    for _ in range(2):
+        if not any(marker in repaired for marker in _MOJIBAKE_MARKERS):
+            break
+        try:
+            candidate = repaired.encode("cp1252").decode("utf-8")
+        except UnicodeError:
+            break
+        if candidate == repaired:
+            break
+        repaired = candidate
+    return repaired.translate(_PRIVATE_USE_BULLETS)
+
+
+def _apply_text_edits(
+    value: str,
+    edits: Iterable[Mapping[str, Any]],
+    *,
+    observation_id: str,
+    field_name: str,
+) -> str:
+    result = value
+    for edit in edits:
+        operation = str(edit.get("operation", ""))
+        marker = str(edit.get("text", ""))
+        if not marker:
+            raise ValueError(
+                f"empty {field_name} edit marker for {observation_id}"
+            )
+        if operation == "remove_suffix":
+            if not result.endswith(marker):
+                raise ValueError(
+                    f"expected {field_name} suffix for {observation_id}: {marker!r}"
+                )
+            result = result[: -len(marker)]
+            continue
+        occurrences = result.count(marker)
+        if occurrences != 1:
+            raise ValueError(
+                f"expected one {field_name} edit marker for {observation_id}, "
+                f"found {occurrences}: {marker!r}"
+            )
+        if operation == "remove_literal":
+            result = result.replace(marker, "", 1)
+        elif operation == "truncate_before":
+            result = result.split(marker, 1)[0]
+        elif operation == "replace_literal":
+            result = result.replace(marker, str(edit.get("replacement", "")), 1)
+        else:
+            raise ValueError(
+                f"unsupported {field_name} edit operation for {observation_id}: "
+                f"{operation!r}"
+            )
+    return result.strip()
+
+
+def _reviewed_text(
+    candidate: Mapping[str, Any],
+    annotation: Mapping[str, Any],
+    context: Mapping[str, Any],
+    field_name: str,
+) -> str:
+    observation_id = str(annotation["observation_id"])
+    correction = context.get("text_corrections", {}).get(observation_id, {})
+    value = str(
+        correction.get(
+            field_name,
+            annotation.get(field_name, candidate.get(field_name, "")),
+        )
+    )
+    if context.get("repair_mojibake", False):
+        value = _repair_mojibake(value)
+    return _apply_text_edits(
+        value,
+        correction.get(f"{field_name}_edits", []),
+        observation_id=observation_id,
+        field_name=field_name,
+    )
 
 
 def _labels_for(annotation: Mapping[str, Any]) -> tuple[str, ...]:
@@ -109,6 +197,8 @@ def materialize_overlays(
     written: list[str] = []
     skipped: list[dict[str, str]] = []
     supervision_counts: dict[str, int] = {}
+    materialized_ids: set[str] = set()
+    eligible_tasks: set[str] = set()
 
     for overlay_path in overlay_paths:
         path = Path(overlay_path)
@@ -120,10 +210,14 @@ def materialize_overlays(
                 "--allow-machine-drafts for an explicitly weak-supervision run"
             )
         supervision = "human_adjudicated" if is_training_eligible else "machine_draft"
+        eligible_tasks.update(str(task) for task in overlay.get("training_eligible_tasks", []))
         for context, raw_annotation in _overlay_entries(overlay):
             observation_id = str(raw_annotation["observation_id"])
             if observation_id not in candidates:
                 raise ValueError(f"overlay references unknown observation {observation_id!r}")
+            if observation_id in materialized_ids:
+                raise ValueError(f"duplicate overlay observation {observation_id!r}")
+            materialized_ids.add(observation_id)
             labels = _labels_for(raw_annotation)
             unknown = sorted(set(labels) - set(FINDING_LABELS))
             if unknown:
@@ -137,8 +231,12 @@ def materialize_overlays(
                     "source_pdf": candidate.get("source_pdf") or context.get("source_pdf"),
                     "lgu": candidate.get("lgu") or context.get("lgu"),
                     "year": candidate.get("year") or context.get("year"),
-                    "observation_text": candidate["observation_text"],
-                    "recommendation_text": candidate.get("recommendation_text", ""),
+                    "observation_text": _reviewed_text(
+                        candidate, raw_annotation, context, "observation_text"
+                    ),
+                    "recommendation_text": _reviewed_text(
+                        candidate, raw_annotation, context, "recommendation_text"
+                    ),
                     "evidence_page_numbers": raw_annotation.get(
                         "evidence_page_numbers", candidate.get("page_numbers", [])
                     ),
@@ -156,6 +254,10 @@ def materialize_overlays(
                         "ner_reviewed": raw_annotation.get("ner_reviewed", False),
                         "relations_reviewed": raw_annotation.get("relations_reviewed", False),
                         "reviewed_no_finding": not labels,
+                        "finding_decision": raw_annotation.get("finding_decision"),
+                        "boundary_status": raw_annotation.get("boundary_status"),
+                        "adjudication_reason": raw_annotation.get("adjudication_reason"),
+                        "boundary_note": raw_annotation.get("boundary_note"),
                     },
                 }
             )
@@ -173,6 +275,7 @@ def materialize_overlays(
         "written": len(written),
         "skipped": skipped,
         "supervision_counts": supervision_counts,
+        "training_eligible_tasks": sorted(eligible_tasks),
         "finding_labels": list(FINDING_LABELS),
         "annotation_files": written,
     }

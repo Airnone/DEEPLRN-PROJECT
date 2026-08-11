@@ -468,22 +468,92 @@ def extract_manifest(
         if not pdf_path.exists():
             raise FileNotFoundError(f"manifest PDF not found: {pdf_path}")
 
+        if (
+            document.get("extraction_profile") == "image_only_ocr_required"
+            and not ocr_fallback
+        ):
+            logger.warning(
+                "Skipping %s because its manifest marks it as image-only and OCR is disabled",
+                document["doc_id"],
+            )
+            document_summaries.append(
+                {
+                    "doc_id": document["doc_id"],
+                    "lgu": document["lgu"],
+                    "year": int(document["year"]),
+                    "pages": int(document.get("pages", 0)),
+                    "extraction_status": "ocr_required",
+                    "observation_candidates": 0,
+                    "candidates_without_recommendations": 0,
+                    "candidate_pages": [],
+                }
+            )
+            continue
+
         pages = PDFExtractor(
             pdf_path,
             ExtractionConfig(ocr_fallback=ocr_fallback),
         ).extract()
-        document_candidates = extractor.extract(
-            pages,
-            doc_id=str(document["doc_id"]),
-            source_pdf=_display_source_path(pdf_path),
-            lgu=str(document["lgu"]),
-            year=int(document["year"]),
-            metadata={
-                "document_scope": document.get("document_scope", ""),
-                "audit_opinion": document.get("audit_opinion", ""),
-                "manifest_path": _display_source_path(manifest_path),
-            },
-        )
+        candidate_pages = pages
+        candidate_page_range = document.get("candidate_page_range")
+        if candidate_page_range is not None:
+            if (
+                not isinstance(candidate_page_range, list)
+                or len(candidate_page_range) != 2
+                or not all(isinstance(value, int) for value in candidate_page_range)
+            ):
+                raise ValueError(
+                    f"candidate_page_range for {document['doc_id']} must be [start, end]"
+                )
+            page_start, page_end = candidate_page_range
+            if page_start < 1 or page_end < page_start:
+                raise ValueError(
+                    f"candidate_page_range for {document['doc_id']} is invalid: "
+                    f"{candidate_page_range}"
+                )
+            candidate_pages = [
+                page for page in pages if page_start <= page.page_number <= page_end
+            ]
+            if not candidate_pages:
+                raise ValueError(
+                    f"candidate_page_range for {document['doc_id']} selected no PDF pages"
+                )
+
+        section_anchor = document.get("section_anchor")
+        if section_anchor:
+            anchor_page = candidate_pages[0].page_number
+            candidate_pages = [
+                PageData(page_number=anchor_page, text=str(section_anchor)),
+                *candidate_pages,
+            ]
+
+        doc_id = str(document["doc_id"])
+        try:
+            document_candidates = extractor.extract(
+                candidate_pages,
+                doc_id=doc_id,
+                source_pdf=_display_source_path(pdf_path),
+                lgu=str(document["lgu"]),
+                year=int(document["year"]),
+                metadata={
+                    "document_scope": document.get("document_scope", ""),
+                    "audit_opinion": document.get("audit_opinion", ""),
+                    "manifest_path": _display_source_path(manifest_path),
+                    "candidate_page_range": candidate_page_range,
+                    "source_text_quality": document.get("source_text_quality", "embedded_text"),
+                },
+            )
+            extraction_status = "extracted"
+        except ValueError as exc:
+            expected_messages = {
+                f"no observation candidates were extracted from {doc_id}",
+                "no audit-opinion or significant-observation section was found",
+            }
+            if str(exc) not in expected_messages:
+                raise
+            logger.warning("%s; continuing with the remaining manifest documents", exc)
+            document_candidates = []
+            extraction_status = "no_candidates"
         candidates.extend(document_candidates)
         document_summaries.append(
             {
@@ -491,6 +561,8 @@ def extract_manifest(
                 "lgu": document["lgu"],
                 "year": int(document["year"]),
                 "pages": len(pages),
+                "candidate_page_range": candidate_page_range,
+                "extraction_status": extraction_status,
                 "observation_candidates": len(document_candidates),
                 "candidates_without_recommendations": sum(
                     not candidate.recommendation_text for candidate in document_candidates
