@@ -1,6 +1,6 @@
 # [Project Name]
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)]([https://colab.research.google.com/drive/1MC40mm4NnUlgzZ9C8X_XhResio9s9cL8?usp=sharing])
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1MC40mm4NnUlgzZ9C8X_XhResio9s9cL8?usp=sharing)
 
 ## Overview
 [Provide a clear, high-level explanation of the project here. What problem does it solve? What are the main features or goals? If this is a data science or machine learning project, briefly mention the dataset and the methodology or models used.]
