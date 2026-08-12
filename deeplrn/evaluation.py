@@ -106,15 +106,9 @@ def entity_span_metrics(
     """Micro exact-match entity metrics, keeping document identity distinct."""
 
     predicted = {
-        (doc_id, *span)
-        for doc_id, spans in predicted_by_document.items()
-        for span in spans
+        (doc_id, *span) for doc_id, spans in predicted_by_document.items() for span in spans
     }
-    gold = {
-        (doc_id, *span)
-        for doc_id, spans in gold_by_document.items()
-        for span in spans
-    }
+    gold = {(doc_id, *span) for doc_id, spans in gold_by_document.items() for span in spans}
     return set_prf(predicted, gold)
 
 
@@ -171,6 +165,7 @@ def multilabel_classification_metrics(
         raise ValueError("every label vector must match num_labels")
 
     per_label = []
+    label_supports = []
     total_tp = total_fp = total_fn = 0
     for label_id in range(num_labels):
         tp = sum(
@@ -186,10 +181,21 @@ def multilabel_classification_metrics(
             for predicted, target in zip(predicted_rows, gold_rows)
         )
         per_label.append(_prf(tp, fp, fn))
+        label_supports.append(sum(target[label_id] == 1 for target in gold_rows))
         total_tp += tp
         total_fp += fp
         total_fn += fn
     micro = _prf(total_tp, total_fp, total_fn)
+    supported_label_ids = [
+        label_id for label_id, support in enumerate(label_supports) if support > 0
+    ]
+
+    def supported_average(measure: str) -> float:
+        return _divide(
+            sum(per_label[label_id][measure] for label_id in supported_label_ids),
+            len(supported_label_ids),
+        )
+
     result = {
         "subset_accuracy": _divide(
             sum(predicted == target for predicted, target in zip(predicted_rows, gold_rows)),
@@ -206,15 +212,96 @@ def multilabel_classification_metrics(
         "macro_precision": sum(item["precision"] for item in per_label) / num_labels,
         "macro_recall": sum(item["recall"] for item in per_label) / num_labels,
         "macro_f1": sum(item["f1"] for item in per_label) / num_labels,
+        "supported_label_count": float(len(supported_label_ids)),
+        "supported_macro_precision": supported_average("precision"),
+        "supported_macro_recall": supported_average("recall"),
+        "supported_macro_f1": supported_average("f1"),
         "micro_precision": micro["precision"],
         "micro_recall": micro["recall"],
         "micro_f1": micro["f1"],
     }
     for label_id, item in enumerate(per_label):
+        result[f"label_{label_id}_support"] = float(label_supports[label_id])
         result[f"label_{label_id}_precision"] = item["precision"]
         result[f"label_{label_id}_recall"] = item["recall"]
         result[f"label_{label_id}_f1"] = item["f1"]
     return result
+
+
+def apply_multilabel_thresholds(
+    probabilities: Sequence[Sequence[float]],
+    thresholds: Sequence[float],
+) -> list[list[int]]:
+    """Convert multilabel probabilities to predictions using one threshold per label."""
+
+    if not thresholds:
+        raise ValueError("thresholds must not be empty")
+    if any(not 0.0 <= float(value) <= 1.0 for value in thresholds):
+        raise ValueError("thresholds must be between zero and one")
+    if any(len(row) != len(thresholds) for row in probabilities):
+        raise ValueError("every probability vector must match thresholds")
+    return [
+        [int(float(value) > float(thresholds[index])) for index, value in enumerate(row)]
+        for row in probabilities
+    ]
+
+
+def tune_multilabel_thresholds(
+    probabilities: Sequence[Sequence[float]],
+    gold: Sequence[Sequence[int | float]],
+    num_labels: int,
+    *,
+    default_threshold: float = 0.5,
+) -> list[float]:
+    """Choose per-label thresholds that maximize F1 on calibration data.
+
+    Labels with no positive calibration examples retain ``default_threshold``.
+    Ties prefer higher precision, then the threshold closest to the default.
+    """
+
+    if len(probabilities) != len(gold):
+        raise ValueError("probabilities and gold labels must have the same length")
+    if num_labels < 1:
+        raise ValueError("num_labels must be positive")
+    if not 0.0 <= default_threshold <= 1.0:
+        raise ValueError("default_threshold must be between zero and one")
+    if any(len(row) != num_labels for row in probabilities):
+        raise ValueError("every probability vector must match num_labels")
+    if any(len(row) != num_labels for row in gold):
+        raise ValueError("every gold vector must match num_labels")
+    if not probabilities:
+        return [float(default_threshold)] * num_labels
+
+    thresholds: list[float] = []
+    for label_id in range(num_labels):
+        targets = [int(bool(row[label_id])) for row in gold]
+        if sum(targets) == 0:
+            thresholds.append(float(default_threshold))
+            continue
+        scores = [float(row[label_id]) for row in probabilities]
+        candidates = sorted({0.0, 1.0, float(default_threshold), *scores})
+        ranked: list[tuple[tuple[float, float, float, float], float]] = []
+        for threshold in candidates:
+            predictions = [int(score > threshold) for score in scores]
+            tp = sum(
+                prediction == 1 and target == 1 for prediction, target in zip(predictions, targets)
+            )
+            fp = sum(
+                prediction == 1 and target == 0 for prediction, target in zip(predictions, targets)
+            )
+            fn = sum(
+                prediction == 0 and target == 1 for prediction, target in zip(predictions, targets)
+            )
+            metrics = _prf(tp, fp, fn)
+            rank = (
+                metrics["f1"],
+                metrics["precision"],
+                -abs(threshold - default_threshold),
+                threshold,
+            )
+            ranked.append((rank, threshold))
+        thresholds.append(max(ranked)[1])
+    return thresholds
 
 
 def calibration_metrics(
@@ -245,9 +332,7 @@ def calibration_metrics(
             in_bin |= confidence.eq(0)
         if in_bin.any():
             weight = in_bin.float().mean().item()
-            ece += weight * abs(
-                correct[in_bin].mean().item() - confidence[in_bin].mean().item()
-            )
+            ece += weight * abs(correct[in_bin].mean().item() - confidence[in_bin].mean().item())
     return {"brier": float(brier), "ece": float(ece)}
 
 

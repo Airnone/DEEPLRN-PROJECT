@@ -337,10 +337,12 @@ class Trainer:
                 relative_loss_drop = self._relative_loss_drop(epoch_losses)
                 logger.info(
                     "Epoch %d - train_loss %.4f - validation_macro_f1 %.4f "
+                    "- validation_supported_macro_f1 %.4f "
                     "- validation_tuple_f1 %.4f - validation_ner_f1 %.4f",
                     self.completed_epochs,
                     average_loss,
                     metrics["finding_macro_f1"],
+                    metrics["finding_supported_macro_f1"],
                     metrics["tuple_f1"],
                     metrics["ner_f1"],
                 )
@@ -560,6 +562,12 @@ class Trainer:
             "finding_macro_precision": finding["macro_precision"],
             "finding_macro_recall": finding["macro_recall"],
             "finding_macro_f1": finding["macro_f1"],
+            "finding_supported_label_count": finding["supported_label_count"],
+            "finding_supported_macro_precision": finding[
+                "supported_macro_precision"
+            ],
+            "finding_supported_macro_recall": finding["supported_macro_recall"],
+            "finding_supported_macro_f1": finding["supported_macro_f1"],
             "finding_micro_precision": finding["micro_precision"],
             "finding_micro_recall": finding["micro_recall"],
             "finding_micro_f1": finding["micro_f1"],
@@ -579,6 +587,9 @@ class Trainer:
             "evidence_page_support": float(evidence_page_total),
         }
         for label_id, label in enumerate(FINDING_LABELS):
+            metrics[f"finding_{label}_support"] = finding[
+                f"label_{label_id}_support"
+            ]
             for measure in ("precision", "recall", "f1"):
                 metrics[f"finding_{label}_{measure}"] = finding[
                     f"label_{label_id}_{measure}"

@@ -209,7 +209,14 @@ def materialize_overlays(
                 f"{path} is not training-eligible; adjudicate it or pass "
                 "--allow-machine-drafts for an explicitly weak-supervision run"
             )
-        supervision = "human_adjudicated" if is_training_eligible else "machine_draft"
+        default_supervision = (
+            "human_adjudicated" if is_training_eligible else "machine_draft"
+        )
+        supervision = str(
+            overlay.get("supervision_quality", default_supervision)
+        ).strip()
+        if not supervision:
+            raise ValueError(f"{path} has an empty supervision_quality")
         eligible_tasks.update(str(task) for task in overlay.get("training_eligible_tasks", []))
         for context, raw_annotation in _overlay_entries(overlay):
             observation_id = str(raw_annotation["observation_id"])
@@ -229,7 +236,11 @@ def materialize_overlays(
                     "doc_id": observation_id,
                     "parent_doc_id": context.get("parent_doc_id") or candidate["doc_id"],
                     "source_pdf": candidate.get("source_pdf") or context.get("source_pdf"),
-                    "lgu": candidate.get("lgu") or context.get("lgu"),
+                    "lgu": (
+                        raw_annotation.get("lgu")
+                        or candidate.get("lgu")
+                        or context.get("lgu")
+                    ),
                     "year": candidate.get("year") or context.get("year"),
                     "observation_text": _reviewed_text(
                         candidate, raw_annotation, context, "observation_text"

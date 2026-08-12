@@ -122,6 +122,57 @@ def test_materializer_accepts_review_decisions_and_applies_audited_text_edits(tm
     assert annotation.metadata["relations_reviewed"] is False
 
 
+def test_materializer_preserves_explicit_supervision_provenance(tmp_path):
+    candidates = tmp_path / "candidates.jsonl"
+    candidates.write_text(
+        json.dumps(
+            {
+                "observation_id": "sample-obs-001",
+                "doc_id": "sample",
+                "source_pdf": "sample.pdf",
+                "lgu": "Sample LGU",
+                "year": 2023,
+                "page_numbers": [3],
+                "observation_text": "The payment lacked support.",
+                "recommendation_text": "Submit the supporting records.",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    overlay = tmp_path / "blanket-approval.json"
+    overlay.write_text(
+        json.dumps(
+            {
+                "training_eligible": True,
+                "training_eligible_tasks": ["finding"],
+                "supervision_quality": "owner_blanket_approved_machine_labels",
+                "decisions": [
+                    {
+                        "observation_id": "sample-obs-001",
+                        "lgu": "Canonical Sample LGU",
+                        "finding_labels": ["unsupported_disbursement"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "reviewed"
+    summary = materialize_overlays(candidates, [overlay], output)
+    annotation = load_annotation(output / "sample-obs-001.json")
+
+    assert summary["supervision_counts"] == {
+        "owner_blanket_approved_machine_labels": 1
+    }
+    assert (
+        annotation.metadata["supervision_quality"]
+        == "owner_blanket_approved_machine_labels"
+    )
+    assert annotation.lgu == "Canonical Sample LGU"
+
+
 def test_materializer_rejects_missing_or_ambiguous_text_edit_markers(tmp_path):
     candidates = tmp_path / "candidates.jsonl"
     candidates.write_text(

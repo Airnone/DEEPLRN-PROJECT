@@ -149,7 +149,13 @@ def train_main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--selection-metric",
         default="tuple_f1",
-        choices=("tuple_f1", "finding_macro_f1", "ner_f1", "relation_f1"),
+        choices=(
+            "tuple_f1",
+            "finding_macro_f1",
+            "finding_supported_macro_f1",
+            "ner_f1",
+            "relation_f1",
+        ),
     )
     parser.add_argument("--relation-loss-weight", type=float, default=0.5)
     parser.add_argument("--seed", type=int, default=42)

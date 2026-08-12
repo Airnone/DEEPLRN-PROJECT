@@ -73,6 +73,26 @@ Status of Implementation of Prior Year's Audit Recommendations"""
     assert candidates[2].source_item == "1"
 
 
+def test_capitalized_numbered_subitems_stay_inside_current_observation():
+    candidates = extract(
+        """Audit Opinion on the Financial Statements
+We rendered a qualified opinion due to the following observations:
+14. Payments lacked the required proposal, which should contain:
+1. Project Objective
+2. Required Manpower
+3. Schedule of Activities
+15. Cash advances remained unliquidated.
+We recommended that Management require liquidation.
+Status of Implementation of Prior Years' Audit Recommendations"""
+    )
+
+    assert len(candidates) == 2
+    assert candidates[0].source_item == "14"
+    assert "1. Project Objective" in candidates[0].observation_text
+    assert "3. Schedule of Activities" in candidates[0].observation_text
+    assert candidates[1].source_item == "15"
+
+
 def test_extracts_unnumbered_summary_exception_before_numbered_observations():
     candidates = extract(
         """III. Independent Auditor's Report on the Financial Statements

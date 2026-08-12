@@ -37,7 +37,9 @@ _RECOMMENDATION_PATTERNS = (
 )
 
 _SECTION_TRANSITION_PATTERNS = (
-    re.compile(r"\bsignificant\s+(?:audit\s+)?observations?\s+and\s+recommendations?\b", re.IGNORECASE),
+    re.compile(
+        r"\bsignificant\s+(?:audit\s+)?observations?\s+and\s+recommendations?\b", re.IGNORECASE
+    ),
     re.compile(r"\bother\s+significant\s+observations?\s+and\s+recommendations?\b", re.IGNORECASE),
     re.compile(r"\bother\s+observations?\s+that\s+need\s+immediate\s+attention\b", re.IGNORECASE),
 )
@@ -50,9 +52,7 @@ _STOP_PATTERNS = (
     re.compile(r"\bstatus\s+of\s+prior\s+years?", re.IGNORECASE),
 )
 
-_BOILERPLATE_PATTERNS = (
-    re.compile(r"^the\s+audit\s+team\s+communicated\b", re.IGNORECASE),
-)
+_BOILERPLATE_PATTERNS = (re.compile(r"^the\s+audit\s+team\s+communicated\b", re.IGNORECASE),)
 
 _OBSERVATION_SIGNAL = re.compile(
     r"\b(?:discrepanc|could\s+not\s+be\s+ascertained|cannot\s+be\s+ascertained|"
@@ -88,12 +88,7 @@ _SHARED_RECOMMENDATION_ITEM = re.compile(
 
 
 def _canonical(text: str) -> str:
-    return (
-        text.replace("’", "'")
-        .replace("‘", "'")
-        .replace("–", "-")
-        .replace("—", "-")
-    )
+    return text.replace("’", "'").replace("‘", "'").replace("–", "-").replace("—", "-")
 
 
 @dataclass(frozen=True)
@@ -187,9 +182,7 @@ def _find_start(lines: Sequence[SourceLine]) -> int:
         return target
 
     anchors = [
-        index
-        for index, line in enumerate(lines)
-        if _AUDIT_ANCHOR.search(_canonical(line.text))
+        index for index, line in enumerate(lines) if _AUDIT_ANCHOR.search(_canonical(line.text))
     ]
     if anchors:
         return anchors[-1]
@@ -283,6 +276,7 @@ class ObservationExtractor:
         preamble: list[SourceLine] = []
         recommendation_mode = False
         buffers: list[_CandidateBuffer] = []
+        last_top_level_item: int | None = None
 
         def finalize() -> None:
             nonlocal current
@@ -306,6 +300,7 @@ class ObservationExtractor:
 
             if _is_section_transition(text):
                 section = "significant_observations"
+                last_top_level_item = None
                 if current is None and preamble:
                     preamble_text = _join_lines(preamble)
                     if _OBSERVATION_SIGNAL.search(_canonical(preamble_text)):
@@ -320,13 +315,24 @@ class ObservationExtractor:
 
             numbered = _numbered_observation(text)
             if numbered is not None:
-                finalize()
                 item, body = numbered
+                item_number = int(item)
+                is_top_level = last_top_level_item is None or item_number == last_top_level_item + 1
+                if not is_top_level and current is not None:
+                    target = (
+                        current.recommendation_lines
+                        if recommendation_mode
+                        else current.observation_lines
+                    )
+                    target.append(line)
+                    continue
+                finalize()
                 current = _CandidateBuffer(
                     section=section,
                     source_item=item,
                     observation_lines=[SourceLine(line.page_number, body)],
                 )
+                last_top_level_item = item_number
                 recommendation_mode = False
                 preamble = []
                 continue
@@ -389,7 +395,7 @@ class ObservationExtractor:
             if not by_item:
                 continue
 
-            for target in buffers[:donor_index + 1]:
+            for target in buffers[: donor_index + 1]:
                 if target.section != donor.section or target.source_item not in by_item:
                     continue
                 target.recommendation_lines = [heading, *by_item[target.source_item]]
@@ -468,10 +474,7 @@ def extract_manifest(
         if not pdf_path.exists():
             raise FileNotFoundError(f"manifest PDF not found: {pdf_path}")
 
-        if (
-            document.get("extraction_profile") == "image_only_ocr_required"
-            and not ocr_fallback
-        ):
+        if document.get("extraction_profile") == "image_only_ocr_required" and not ocr_fallback:
             logger.warning(
                 "Skipping %s because its manifest marks it as image-only and OCR is disabled",
                 document["doc_id"],
@@ -511,9 +514,7 @@ def extract_manifest(
                     f"candidate_page_range for {document['doc_id']} is invalid: "
                     f"{candidate_page_range}"
                 )
-            candidate_pages = [
-                page for page in pages if page_start <= page.page_number <= page_end
-            ]
+            candidate_pages = [page for page in pages if page_start <= page.page_number <= page_end]
             if not candidate_pages:
                 raise ValueError(
                     f"candidate_page_range for {document['doc_id']} selected no PDF pages"
